@@ -7,7 +7,8 @@ router.get('/', async (req, res, next) => {
   try {
     res.json(await getMarketPrices());
   } catch (err) {
-    next(err);
+    console.error('Sources de cours indisponibles:', err.message);
+    res.status(503).json({ error: 'Les cours sont temporairement indisponibles. Réessayez dans quelques instants.' });
   }
 });
 

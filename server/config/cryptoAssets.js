@@ -3,6 +3,7 @@ module.exports = [
     id: 'USDT',
     name: 'Tether',
     coinGeckoId: 'tether',
+    coinPaprikaId: 'usdt-tether',
     networks: [
       { id: 'TRC20', name: 'Tron (TRC20)' },
       { id: 'BEP20', name: 'BNB Smart Chain (BEP20)' },
@@ -13,6 +14,7 @@ module.exports = [
     id: 'BTC',
     name: 'Bitcoin',
     coinGeckoId: 'bitcoin',
+    coinPaprikaId: 'btc-bitcoin',
     networks: [
       { id: 'BITCOIN', name: 'Bitcoin (natif)' },
       { id: 'LIGHTNING', name: 'Lightning Network' },
@@ -23,6 +25,7 @@ module.exports = [
     id: 'POL',
     name: 'Polygon Ecosystem Token',
     coinGeckoId: 'polygon-ecosystem-token',
+    coinPaprikaId: 'pol-polygon-ecosystem-token',
     networks: [
       { id: 'POLYGON', name: 'Polygon (natif)' },
       { id: 'ERC20', name: 'Ethereum (POL envelopé)' },
@@ -33,6 +36,7 @@ module.exports = [
     id: 'ETH',
     name: 'Ethereum',
     coinGeckoId: 'ethereum',
+    coinPaprikaId: 'eth-ethereum',
     networks: [
       { id: 'ETHEREUM', name: 'Ethereum (natif)' },
       { id: 'ARBITRUM', name: 'Arbitrum One' },
@@ -43,6 +47,7 @@ module.exports = [
     id: 'SOL',
     name: 'Solana',
     coinGeckoId: 'solana',
+    coinPaprikaId: 'sol-solana',
     networks: [
       { id: 'SOLANA', name: 'Solana (natif)' },
       { id: 'ERC20', name: 'Ethereum (SOL envelopé)' },

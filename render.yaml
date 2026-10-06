@@ -21,7 +21,5 @@ services:
         sync: false
       - key: BREVO_SENDER_EMAIL
         sync: false
-      - key: COINGECKO_API_KEY
-        sync: false
       - key: BREVO_SENDER_NAME
         value: DAE Crypto

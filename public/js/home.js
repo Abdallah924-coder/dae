@@ -57,9 +57,9 @@
         return card;
       }));
       error.classList.add('hidden');
-      updated.textContent = `Cours CoinGecko ${data.stale ? 'en cache (dernière mise à jour' : 'actualisés à'} ${new Date(data.updatedAt).toLocaleTimeString('fr-FR')}${data.stale ? ')' : ''}`;
+      updated.textContent = `Cours ${data.source} ${data.stale ? 'en cache (dernière mise à jour' : 'actualisés à'} ${new Date(data.updatedAt).toLocaleTimeString('fr-FR')}${data.stale ? ')' : ''}`;
     } catch (err) {
-      error.textContent = `Cours indisponibles pour le moment : ${err.message}`;
+      error.textContent = `Cours temporairement indisponibles. Réessayez dans quelques instants.`;
       error.classList.remove('hidden');
       updated.textContent = 'Cours indisponibles';
     }
