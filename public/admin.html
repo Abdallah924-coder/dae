@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="fr">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>Administration — DAE Crypto</title><script src="https://cdn.tailwindcss.com"></script><script>tailwind.config={theme:{extend:{colors:{brand:'#176b57',ink:'#17211f'}}}}</script></head>
+<body class="min-h-screen bg-slate-50 text-ink antialiased">
+  <header class="border-b border-slate-100 bg-white"><nav class="mx-auto flex max-w-7xl items-center justify-between px-5 py-4 lg:px-8"><a href="/" class="text-xl font-black">DAE <span class="text-brand">Crypto</span><span class="ml-2 hidden text-sm font-medium text-slate-500 sm:inline">Administration</span></a><div class="flex items-center gap-3"><button id="logout-button" class="hidden text-sm font-semibold text-slate-500 hover:text-rose-600">Déconnexion</button><button data-menu-toggle aria-controls="mobile-menu" aria-expanded="false" aria-label="Ouvrir le menu" class="rounded-lg border border-slate-200 p-2 md:hidden"><svg aria-hidden="true" viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button></div></nav><div id="mobile-menu" class="hidden border-t border-slate-100 bg-white px-5 py-4 md:hidden"><div class="mx-auto grid max-w-7xl gap-3 text-sm font-semibold"><a href="/">Accueil</a><a href="/achat.html">Acheter</a><a href="/vente.html">Vendre</a><a href="/suivi.html">Suivre une commande</a><a href="/contact.html">Contact</a></div></div></header>
+  <main class="mx-auto max-w-7xl px-4 py-8 lg:px-8">
+    <section id="login-panel" class="mx-auto max-w-lg rounded-3xl border border-slate-200 bg-white p-7 shadow-sm">
+      <p class="text-sm font-bold uppercase tracking-widest text-brand">Espace sécurisé</p><h1 class="mt-2 text-3xl font-black">Administration</h1><p class="mt-2 text-sm text-slate-600">Connectez-vous avec l’adresse e-mail et le mot de passe de l’administrateur.</p>
+      <form id="login-form" class="mt-6 space-y-4"><label class="block text-sm font-semibold">Adresse e-mail<input name="email" type="email" required autocomplete="username" class="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3"></label><label class="block text-sm font-semibold">Mot de passe<input name="password" type="password" required autocomplete="current-password" class="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3"></label><button class="w-full rounded-xl bg-brand px-5 py-3 font-semibold text-white">Se connecter</button></form>
+      <p id="login-error" class="mt-3 hidden text-sm text-rose-700" role="alert"></p>
+    </section>
+    <section id="admin-panel" class="hidden">
+      <div class="flex flex-wrap items-end justify-between gap-4"><div><p class="text-sm font-bold uppercase tracking-widest text-brand">Gestion de la plateforme</p><h1 class="mt-2 text-3xl font-black">Tableau de bord</h1></div><button id="refresh-orders" class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold">Actualiser</button></div>
+      <p id="admin-message" class="mt-4 hidden rounded-xl p-3 text-sm" role="status"></p>
+      <div class="mt-7 flex flex-wrap gap-2 border-b border-slate-200">
+        <button data-tab="orders" class="rounded-t-xl bg-white px-4 py-3 text-sm font-bold text-brand">Commandes</button>
+        <button data-tab="rates" class="rounded-t-xl px-4 py-3 text-sm font-bold text-slate-500">Taux</button>
+        <button data-tab="settings" class="rounded-t-xl px-4 py-3 text-sm font-bold text-slate-500">Paiements & réseaux</button>
+      </div>
+      <section data-panel="orders" class="mt-5">
+        <div class="flex flex-wrap items-center justify-between gap-3"><h2 class="text-xl font-bold">Commandes récentes</h2><label class="text-sm">Statut <select id="status-filter" class="ml-2 rounded-lg border border-slate-200 bg-white px-3 py-2"><option value="">Tous</option><option value="created">Créée</option><option value="payment_declared">Paiement déclaré</option><option value="processing">En traitement</option><option value="completed">Terminée</option><option value="cancelled">Refusée</option><option value="expired">Expirée</option><option value="failed">Échouée</option></select></label></div>
+        <div id="orders-list" class="mt-4 grid gap-4"></div>
+      </section>
+      <section data-panel="rates" class="mt-5 hidden">
+        <h2 class="text-xl font-bold">Taux de conversion</h2><p class="mt-1 text-sm text-slate-500">Les cours crypto viennent de CoinGecko en USD. Ce taux convertit la valeur USDT en FCFA pour tous les actifs.</p>
+        <form id="rate-form" class="mt-5 grid gap-4 rounded-2xl border border-slate-200 bg-white p-5 sm:grid-cols-2 lg:grid-cols-3">
+          <label class="text-sm font-semibold">1 USDT en FCFA<input name="usdtXafRate" required type="number" min="1" step="any" value="640" class="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2"></label>
+          <div class="grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-4 sm:col-span-2 lg:col-span-1"><p class="col-span-2 text-sm font-bold">Limites d’achat (FCFA)</p><label class="text-xs font-semibold">Minimum<input name="buyMinXaf" required type="number" min="1" step="1" value="10000" class="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2"></label><label class="text-xs font-semibold">Maximum<input name="buyMaxXaf" required type="number" min="1" step="1" value="500000" class="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2"></label></div>
+          <div class="grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-4 sm:col-span-2 lg:col-span-1"><p class="col-span-2 text-sm font-bold">Limites de vente (FCFA)</p><label class="text-xs font-semibold">Minimum<input name="sellMinXaf" required type="number" min="1" step="1" value="10000" class="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2"></label><label class="text-xs font-semibold">Maximum<input name="sellMaxXaf" required type="number" min="1" step="1" value="500000" class="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2"></label></div>
+          <button class="rounded-xl bg-brand px-5 py-3 font-semibold text-white">Enregistrer les taux et limites</button>
+        </form>
+        <h3 class="mt-8 text-lg font-bold">Historique des taux</h3><div id="rates-list" class="mt-3 overflow-x-auto rounded-2xl border border-slate-200 bg-white"></div>
+      </section>
+      <section data-panel="settings" class="mt-5 hidden">
+        <h2 class="text-xl font-bold">Coordonnées de réception et de contact</h2><p class="mt-1 text-sm text-slate-500">Les adresses sont utilisées pour les dépôts de vente. Vérifiez chaque adresse et chaque réseau avant de publier.</p>
+        <form id="settings-form" class="mt-5 space-y-6">
+          <div class="grid gap-4 rounded-2xl border border-slate-200 bg-white p-5 sm:grid-cols-2">
+            <label class="text-sm font-semibold">Numéro MTN pour les achats<input name="paymentMtn" type="tel" placeholder="+242…" class="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2"></label>
+            <label class="text-sm font-semibold">Numéro Airtel pour les achats<input name="paymentAirtel" type="tel" placeholder="+242…" class="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2"></label>
+            <label class="text-sm font-semibold sm:col-span-2">Instructions de paiement<textarea name="paymentInstructions" maxlength="500" rows="3" class="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2"></textarea></label>
+            <label class="text-sm font-semibold">WhatsApp de contact<input name="contactWhatsApp" type="tel" placeholder="+242…" class="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2"></label>
+            <label class="text-sm font-semibold">E-mail de contact<input name="contactEmail" type="email" class="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2"></label>
+          </div>
+          <div><h3 class="text-lg font-bold">Adresses crypto de dépôt (vente)</h3><div id="network-addresses" class="mt-3 grid gap-4 lg:grid-cols-2"></div></div>
+          <button class="rounded-xl bg-brand px-5 py-3 font-semibold text-white">Enregistrer les coordonnées</button>
+        </form>
+      </section>
+    </section>
+  </main>
+  <script src="/js/app.js"></script><script src="/js/admin.js"></script>
+</body>
+</html>

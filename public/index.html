@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Achetez et vendez vos cryptomonnaies au Congo avec DAE Crypto. Taux transparents, parcours simple et suivi de commande.">
+  <title>DAE Crypto — La crypto, simplement</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>tailwind.config={theme:{extend:{colors:{brand:'#176b57',ink:'#17211f'}}}}</script>
+</head>
+<body class="bg-white text-ink antialiased">
+  <header class="border-b border-slate-100">
+    <nav class="mx-auto flex h-18 max-w-7xl items-center justify-between px-5 py-4 lg:px-8">
+      <a href="/" class="text-xl font-black tracking-tight">DAE <span class="text-brand">Crypto</span></a>
+      <div class="hidden items-center gap-7 text-sm font-medium text-slate-600 md:flex">
+        <a href="/#marches" class="hover:text-brand">Marchés</a>
+        <a href="/contact.html" class="hover:text-brand">Contact</a>
+        <a href="/suivi.html" class="hover:text-brand">Suivre une commande</a>
+      </div>
+      <div class="hidden gap-2 md:flex">
+        <a href="/vente.html" class="rounded-xl px-4 py-2 text-sm font-semibold text-brand hover:bg-emerald-50">Vendre</a>
+        <a href="/achat.html" class="rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800">Acheter</a>
+      </div>
+      <button data-menu-toggle aria-controls="mobile-menu" aria-expanded="false" aria-label="Ouvrir le menu" class="rounded-lg border border-slate-200 p-2 md:hidden"><svg aria-hidden="true" viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+    </nav>
+    <div id="mobile-menu" class="hidden border-t border-slate-100 bg-white px-5 py-4 md:hidden"><div class="mx-auto grid max-w-7xl gap-3 text-sm font-semibold"><a href="/#marches">Cours en direct</a><a href="/achat.html">Acheter</a><a href="/vente.html">Vendre</a><a href="/suivi.html">Suivre ma commande</a><a href="/contact.html">Contact</a></div></div>
+  </header>
+  <main>
+    <section class="mx-auto grid max-w-7xl items-center gap-12 px-5 py-16 md:py-24 lg:grid-cols-2 lg:px-8">
+      <div>
+        <div class="mb-6 inline-flex items-center gap-2 rounded-full border border-emerald-100 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-900">
+          <span class="h-2 w-2 rounded-full bg-emerald-500"></span> Acheter et vendre au Congo
+        </div>
+        <h1 class="max-w-xl text-5xl font-black leading-tight tracking-tight md:text-6xl">La crypto, <span class="text-brand">simplement.</span></h1>
+        <p class="mt-6 max-w-lg text-lg leading-8 text-slate-600">Choisissez votre crypto, vérifiez le montant en FCFA et suivez chaque étape de votre transaction en toute clarté.</p>
+        <div class="mt-8 flex flex-wrap gap-3">
+          <a href="/achat.html" class="rounded-xl bg-brand px-6 py-3.5 font-semibold text-white shadow-lg shadow-emerald-900/10 hover:bg-emerald-800">Acheter une crypto <span aria-hidden="true">→</span></a>
+          <a href="/vente.html" class="rounded-xl border border-slate-200 px-6 py-3.5 font-semibold hover:bg-slate-50">Vendre une crypto</a>
+        </div>
+        <div class="mt-8 flex flex-wrap gap-x-6 gap-y-2 text-sm text-slate-500"><span>✓ Taux affichés avant confirmation</span><span>✓ Suivi de commande</span></div>
+      </div>
+      <div class="rounded-3xl bg-slate-950 p-7 text-white shadow-2xl shadow-slate-300 md:p-9">
+        <div class="flex items-start justify-between">
+          <div><p class="text-sm text-slate-400">Votre échange, en trois étapes</p><h2 class="mt-1 text-2xl font-bold">Simple et transparent</h2></div>
+          <span class="rounded-full bg-white/10 px-3 py-1 text-xs text-emerald-200">DAE Crypto</span>
+        </div>
+        <div class="mt-8 space-y-5">
+          <div class="flex gap-4"><span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand font-bold">1</span><div><h3 class="font-semibold">Choisissez votre crypto</h3><p class="mt-1 text-sm text-slate-400">USDT, BTC, POL, ETH ou SOL, sur un réseau disponible.</p></div></div>
+          <div class="flex gap-4"><span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand font-bold">2</span><div><h3 class="font-semibold">Vérifiez le montant</h3><p class="mt-1 text-sm text-slate-400">Le total calculé et le taux appliqué sont affichés avant l’envoi.</p></div></div>
+          <div class="flex gap-4"><span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand font-bold">3</span><div><h3 class="font-semibold">Envoyez et suivez</h3><p class="mt-1 text-sm text-slate-400">Ajoutez votre preuve de paiement et gardez votre référence.</p></div></div>
+        </div>
+        <a href="/suivi.html" class="mt-8 inline-flex text-sm font-semibold text-emerald-300 hover:text-white">Retrouver une commande →</a>
+      </div>
+    </section>
+    <section id="marches" class="border-y border-slate-100 bg-slate-50">
+      <div class="mx-auto max-w-7xl px-5 py-16 lg:px-8">
+        <div class="flex flex-wrap items-end justify-between gap-4">
+          <div><p class="text-sm font-bold uppercase tracking-widest text-brand">Cours en direct</p><h2 class="mt-2 text-3xl font-bold">Les prix crypto</h2><p class="mt-2 text-slate-500">Cours USD CoinGecko, actualisés automatiquement toutes les minutes.</p></div>
+          <p id="market-updated" class="text-xs text-slate-500" aria-live="polite">Chargement des cours…</p>
+        </div>
+        <div id="market-list" class="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-5" aria-live="polite"></div>
+        <p id="market-error" class="mt-4 hidden text-sm text-rose-600"></p>
+      </div>
+    </section>
+    <section class="mx-auto max-w-7xl px-5 py-16 lg:px-8">
+      <div class="grid gap-5 md:grid-cols-2">
+        <a href="/achat.html" class="group rounded-3xl border border-slate-200 p-7 hover:border-brand hover:shadow-lg"><span class="text-sm font-bold text-brand">ACHAT</span><h2 class="mt-3 text-2xl font-bold">Vous achetez des cryptos</h2><p class="mt-2 text-slate-500">Indiquez votre adresse de réception, payez par Mobile Money et transmettez la preuve.</p><span class="mt-5 inline-block font-semibold text-brand">Commencer un achat →</span></a>
+        <a href="/vente.html" class="group rounded-3xl border border-slate-200 p-7 hover:border-brand hover:shadow-lg"><span class="text-sm font-bold text-brand">VENTE</span><h2 class="mt-3 text-2xl font-bold">Vous vendez des cryptos</h2><p class="mt-2 text-slate-500">Envoyez votre crypto à l’adresse affichée et recevez les FCFA sur Mobile Money.</p><span class="mt-5 inline-block font-semibold text-brand">Commencer une vente →</span></a>
+      </div>
+    </section>
+  </main>
+  <footer class="border-t border-slate-100"><div class="mx-auto flex max-w-7xl flex-wrap justify-between gap-4 px-5 py-7 text-sm text-slate-500 lg:px-8"><span>© DAE Crypto</span><div class="flex gap-5"><a href="/contact.html" class="hover:text-brand">Contact</a><a href="/suivi.html" class="hover:text-brand">Suivi de commande</a></div></div></footer>
+  <script src="/js/app.js"></script><script src="/js/home.js"></script>
+</body>
+</html>

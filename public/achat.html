@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="fr">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Acheter une crypto — DAE Crypto</title><script src="https://cdn.tailwindcss.com"></script><script>tailwind.config={theme:{extend:{colors:{brand:'#176b57',ink:'#17211f'}}}}</script></head>
+<body class="bg-slate-50 text-ink antialiased">
+  <header class="border-b border-slate-100 bg-white"><nav class="mx-auto flex max-w-7xl items-center justify-between px-5 py-4 lg:px-8"><a href="/" class="text-xl font-black">DAE <span class="text-brand">Crypto</span></a><a href="/vente.html" class="hidden text-sm font-semibold text-brand md:block">Vous voulez vendre ?</a><button data-menu-toggle aria-controls="mobile-menu" aria-expanded="false" aria-label="Ouvrir le menu" class="rounded-lg border border-slate-200 p-2 md:hidden"><svg aria-hidden="true" viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button></nav><div id="mobile-menu" class="hidden border-t border-slate-100 bg-white px-5 py-4 md:hidden"><div class="mx-auto grid max-w-7xl gap-3 text-sm font-semibold"><a href="/">Accueil</a><a href="/achat.html">Acheter</a><a href="/vente.html">Vendre</a><a href="/#marches">Cours en direct</a><a href="/suivi.html">Suivre ma commande</a><a href="/contact.html">Contact</a></div></div></header>
+  <main class="mx-auto max-w-5xl px-4 py-10 md:px-8 md:py-16">
+    <a href="/" class="text-sm text-slate-500 hover:text-brand">← Accueil</a>
+    <div class="mt-6"><p class="text-xs font-bold uppercase tracking-[0.18em] text-brand">Un achat clair, étape par étape</p><h1 class="mt-3 text-4xl font-black tracking-tight md:text-5xl">Acheter une crypto</h1><p class="mt-3 max-w-2xl text-base leading-7 text-slate-600 md:text-lg">Choisissez un actif et un réseau. Saisissez le montant en USDT : nous estimons en direct la quantité de crypto correspondante.</p></div>
+    <ol class="mt-8 grid grid-cols-3 gap-2 text-xs font-semibold sm:text-sm" aria-label="Étapes">
+      <li data-step-label="1" class="rounded-xl bg-brand px-3 py-3 text-center text-white">1 · Montant</li><li data-step-label="2" class="rounded-xl bg-white px-3 py-3 text-center text-slate-500">2 · Coordonnées</li><li data-step-label="3" class="rounded-xl bg-white px-3 py-3 text-center text-slate-500">3 · Paiement</li>
+    </ol>
+    <form id="exchange-form" data-mode="buy" class="mt-8 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm md:p-10 lg:p-12">
+      <div data-step="1">
+        <h2 class="text-xl font-bold">Que souhaitez-vous acheter ?</h2>
+        <div class="mt-5 grid gap-4 sm:grid-cols-2">
+          <div class="text-sm font-semibold">Crypto<div id="asset-picker" role="group" aria-label="Choisir une crypto" class="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5"></div><input name="asset" type="hidden" required></div>
+          <label class="text-sm font-semibold">Réseau<select name="network" required class="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3"><option value="">Choisir un réseau</option></select></label>
+        </div>
+        <label class="mt-6 block text-sm font-semibold">Montant souhaité en USDT<input name="amount" type="number" min="0" step="any" required inputmode="decimal" placeholder="Ex. 50 USDT" class="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-lg"><span class="mt-2 block text-xs font-normal text-slate-500">Pour BTC, ETH, SOL et POL, ce montant représente la valeur en dollars que vous recevrez sous forme de crypto.</span></label>
+        <div class="mt-6 grid gap-4 rounded-2xl border border-emerald-100 bg-emerald-50/60 p-5 md:grid-cols-2 md:p-6"><div><p class="text-sm text-slate-600">Crypto estimée à recevoir</p><p id="quote-crypto" class="mt-2 text-2xl font-black text-ink">—</p></div><div><p class="text-sm text-slate-600">Montant à payer</p><p id="quote-value" class="mt-2 text-2xl font-black text-ink">— FCFA</p></div><p id="quote-rate" class="text-xs text-slate-500 md:col-span-2">Chargement des cours CoinGecko…</p></div>
+      </div>
+      <div data-step="2" class="hidden">
+        <h2 class="text-xl font-bold">Vos coordonnées</h2>
+        <p class="mt-1 text-sm text-slate-500">Vérifiez attentivement le réseau et votre adresse de réception.</p>
+        <label class="mt-5 block text-sm font-semibold">Adresse de votre portefeuille<input name="wallet" required minlength="20" maxlength="100" autocomplete="off" placeholder="Adresse où recevoir vos cryptos" class="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3"><span class="mt-1 block text-xs font-normal text-amber-700">Une adresse sur un mauvais réseau peut entraîner une perte irréversible.</span></label>
+        <div class="mt-4 grid gap-4 sm:grid-cols-2">
+          <fieldset class="sm:col-span-2"><legend class="text-sm font-semibold">Moyen de paiement Mobile Money</legend><div class="mt-2 grid grid-cols-2 gap-3"><label class="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 p-3 has-[:checked]:border-brand has-[:checked]:bg-emerald-50"><input name="operator" type="radio" value="mtn" required checked class="accent-emerald-700"><img src="https://upload.wikimedia.org/wikipedia/commons/a/af/MTN_Logo.svg" alt="" class="h-8 w-12 rounded bg-[#ffcc00] object-contain p-1" referrerpolicy="no-referrer"><span class="text-sm font-semibold">MTN Congo</span></label><label class="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 p-3 has-[:checked]:border-brand has-[:checked]:bg-emerald-50"><input name="operator" type="radio" value="airtel" required class="accent-emerald-700"><img src="https://cdn.simpleicons.org/airtel/FF0000" alt="" class="h-8 w-12 rounded bg-white object-contain p-1" referrerpolicy="no-referrer"><span class="text-sm font-semibold">Airtel Congo</span></label></div></fieldset>
+          <label class="text-sm font-semibold">Votre numéro de paiement<input name="phone" type="tel" required autocomplete="tel" placeholder="+242…" class="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3"></label>
+          <label class="text-sm font-semibold sm:col-span-2">Votre adresse e-mail<input name="email" type="email" required maxlength="160" autocomplete="email" placeholder="vous@exemple.com" class="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3"><span class="mt-1 block text-xs font-normal text-slate-500">Nous vous enverrons la confirmation de réception et le statut de votre achat.</span></label>
+        </div>
+        <div class="mt-5 rounded-2xl border border-slate-200 p-5"><p class="text-xs font-bold uppercase tracking-wide text-slate-500">À payer après confirmation</p><p id="pay-destination" class="mt-2 break-words text-xl font-bold">Choisissez un opérateur</p><p id="pay-instructions" class="mt-2 whitespace-pre-line text-sm text-slate-600"></p></div>
+        <div id="buy-summary" class="mt-5 rounded-2xl bg-slate-50 p-4 text-sm"></div>
+      </div>
+      <div data-step="3" class="hidden">
+        <h2 class="text-xl font-bold">Confirmez votre paiement</h2>
+        <p class="mt-1 text-sm text-slate-500">Après le paiement Mobile Money, joignez la capture et la référence de transaction.</p>
+        <label class="mt-5 block text-sm font-semibold">Capture du paiement<input name="proofImage" type="file" accept="image/jpeg,image/png,image/webp" required class="mt-2 block w-full rounded-xl border border-slate-200 p-3 text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-emerald-50 file:px-3 file:py-2 file:font-semibold file:text-brand"><span class="mt-1 block text-xs font-normal text-slate-500">Image JPEG, PNG ou WebP, 5 Mo maximum. Elle sera optimisée avant envoi.</span></label>
+        <label class="mt-4 block text-sm font-semibold">Référence / ID de transaction<input name="proof" required minlength="6" maxlength="200" class="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3"></label>
+        <div id="final-summary" class="mt-5 rounded-2xl bg-slate-50 p-4 text-sm"></div>
+        <label class="mt-5 flex gap-3 text-sm text-slate-700"><input name="consent" type="checkbox" required class="mt-1 h-4 w-4 accent-emerald-700"><span>Je confirme les détails, le réseau et le montant affiché. Je comprends qu’une adresse ou un réseau erroné peut entraîner une perte définitive.</span></label>
+      </div>
+      <p id="exchange-error" class="mt-4 hidden rounded-xl bg-rose-50 p-3 text-sm text-rose-700" role="alert"></p>
+      <div class="mt-7 flex flex-col-reverse gap-3 sm:flex-row sm:justify-between"><button id="back-step" type="button" class="hidden w-full rounded-xl border border-slate-200 px-5 py-3 font-semibold hover:bg-slate-50 sm:w-auto">Retour</button><button id="next-step" type="button" class="ml-auto w-full rounded-xl bg-brand px-6 py-3 font-semibold text-white hover:bg-emerald-800 sm:w-auto">Continuer</button><button id="submit-order" type="submit" class="hidden ml-auto w-full rounded-xl bg-brand px-6 py-3 font-semibold text-white hover:bg-emerald-800 sm:w-auto">Envoyer et suivre ma commande</button></div>
+    </form>
+  </main>
+  <script src="/js/app.js"></script><script src="/js/exchange.js"></script>
+</body>
+</html>
