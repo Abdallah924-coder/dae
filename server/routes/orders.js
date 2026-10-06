@@ -94,7 +94,7 @@ router.post('/', async (req, res, next) => {
     const maxXaf = mode === 'buy'
       ? rate?.buyMaxXaf ?? rate?.maxXaf ?? 500000
       : rate?.sellMaxXaf ?? rate?.maxXaf ?? 500000;
-    const { markets } = await getMarketPrices();
+    const { markets } = await getMarketPrices({ allowStale: false });
     const livePriceUsd = markets.find((market) => market.asset === asset.id)?.priceUsd;
     const unitPriceUsd = asset.id === 'USDT' ? 1 : livePriceUsd;
     if (!Number.isFinite(unitPriceUsd) || unitPriceUsd <= 0) {

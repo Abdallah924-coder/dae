@@ -19,6 +19,7 @@
   let config;
   let exchangeRate;
   let markets = new Map();
+  let marketsStale = false;
   let currentStep = 1;
   const cryptoLogos = {
     USDT: 'https://cdn.simpleicons.org/tether/26A17B',
@@ -126,10 +127,11 @@
   function updateQuote() {
     const quote = calculate();
     const price = currentPrice() || (assetSelect.value === 'USDT' ? { priceUsd: 1 } : null);
+    const staleNotice = marketsStale ? ' · cours en cache, vérifiez le prix avant de continuer' : '';
     if (!quote || !price) {
       quoteValue.textContent = '—';
       if (mode === 'sell') document.getElementById('quote-usdt').textContent = '— USDT';
-      quoteRate.textContent = price ? 'Saisissez un montant valide.' : 'Cours CoinGecko indisponible.';
+      quoteRate.textContent = (price ? 'Saisissez un montant valide.' : 'Cours CoinGecko indisponible.') + staleNotice;
       return;
     }
     if (mode === 'buy') {
@@ -137,13 +139,13 @@
         `${Dae.formatCrypto(quote.amountCrypto)} ${assetSelect.value}`;
       quoteValue.textContent = Dae.formatXaf(quote.amountXaf);
       const unitPrice = assetSelect.value === 'USDT' ? 1 : price.priceUsd;
-      quoteRate.textContent = `1 ${assetSelect.value} = ${Dae.formatCrypto(unitPrice, unitPrice < 1 ? 6 : 2)} USD · taux de conversion : 1 USDT = ${Dae.formatXaf(exchangeRate.usdtXafRate)}`;
+      quoteRate.textContent = `1 ${assetSelect.value} = ${Dae.formatCrypto(unitPrice, unitPrice < 1 ? 6 : 2)} USD · taux de conversion : 1 USDT = ${Dae.formatXaf(exchangeRate.usdtXafRate)}${staleNotice}`;
     } else {
       document.getElementById('quote-usdt').textContent =
         `${Dae.formatCrypto(quote.amountUsdt, 4)} USDT`;
       quoteValue.textContent = Dae.formatXaf(quote.amountXaf);
       const unitPrice = assetSelect.value === 'USDT' ? 1 : price.priceUsd;
-      quoteRate.textContent = `1 ${assetSelect.value} = ${Dae.formatCrypto(unitPrice, unitPrice < 1 ? 6 : 2)} USD · taux de conversion : 1 USDT = ${Dae.formatXaf(exchangeRate.usdtXafRate)}`;
+      quoteRate.textContent = `1 ${assetSelect.value} = ${Dae.formatCrypto(unitPrice, unitPrice < 1 ? 6 : 2)} USD · taux de conversion : 1 USDT = ${Dae.formatXaf(exchangeRate.usdtXafRate)}${staleNotice}`;
     }
   }
 
@@ -368,12 +370,14 @@
       config = loadedConfig;
       exchangeRate = rates;
       markets = new Map(marketData.markets.map((market) => [market.asset, market]));
+      marketsStale = marketData.stale;
       renderAssetPicker();
       fillNetworks();
       window.setInterval(async () => {
         try {
           const latest = await Dae.api('/api/markets');
           markets = new Map(latest.markets.map((market) => [market.asset, market]));
+          marketsStale = latest.stale;
           updateQuote();
           updatePaymentDetails();
         } catch {

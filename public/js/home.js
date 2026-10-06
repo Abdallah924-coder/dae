@@ -57,7 +57,7 @@
         return card;
       }));
       error.classList.add('hidden');
-      updated.textContent = `Cours CoinGecko actualisés à ${new Date(data.updatedAt).toLocaleTimeString('fr-FR')}`;
+      updated.textContent = `Cours CoinGecko ${data.stale ? 'en cache (dernière mise à jour' : 'actualisés à'} ${new Date(data.updatedAt).toLocaleTimeString('fr-FR')}${data.stale ? ')' : ''}`;
     } catch (err) {
       error.textContent = `Cours indisponibles pour le moment : ${err.message}`;
       error.classList.remove('hidden');
