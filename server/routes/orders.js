@@ -69,16 +69,22 @@ router.post('/', async (req, res, next) => {
 
     const config = await SiteConfig.findOne({ key: 'main' }).lean();
     const configuredNetwork = config?.receivingAddresses?.[asset.id]?.[network];
+    const defaultNetwork = asset.networks.find((item) => item.id === network);
     const depositAddress = typeof configuredNetwork === 'string'
       ? configuredNetwork
       : configuredNetwork?.address;
-    if (!depositAddress?.trim()) {
+    if (!configuredNetwork && !defaultNetwork) {
+      return res.status(400).json({ error: 'Réseau non pris en charge pour cette crypto' });
+    }
+    if (mode === 'sell' && !depositAddress?.trim()) {
       return res.status(503).json({ error: NETWORK_NOT_CONFIGURED });
     }
     let cleanWallet;
     if (mode === 'buy') {
       cleanWallet = String(wallet || '').trim();
-      const networkName = typeof configuredNetwork === 'string' ? network : configuredNetwork?.name || network;
+      const networkName = typeof configuredNetwork === 'string'
+        ? network
+        : configuredNetwork?.name || defaultNetwork?.name || network;
       const maxWalletLength = networkName.toLowerCase().includes('lightning') ? 7100 : 2000;
       if (cleanWallet.length < 20 || cleanWallet.length > maxWalletLength) {
         return res.status(400).json({ error: 'Adresse de portefeuille invalide' });
@@ -145,7 +151,9 @@ router.post('/', async (req, res, next) => {
       amountUsdt,
       rateApplied: unit,
       network,
-      networkName: typeof configuredNetwork === 'string' ? network : configuredNetwork?.name || network,
+      networkName: typeof configuredNetwork === 'string'
+        ? network
+        : configuredNetwork?.name || defaultNetwork?.name || network,
       operator,
       phone: cleanPhone,
       recipientName: cleanRecipientName || undefined,

@@ -20,7 +20,7 @@
   let exchangeRate;
   let markets = new Map();
   let marketsStale = false;
-  let marketSource = 'CoinPaprika';
+  let marketSource = 'API publique';
   let currentStep = 1;
   const cryptoLogos = {
     USDT: 'https://cdn.simpleicons.org/tether/26A17B',
@@ -50,7 +50,7 @@
       button.dataset.asset = asset.id;
       button.className = 'flex min-h-20 items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 text-left transition hover:border-brand hover:bg-emerald-50 focus:outline-none focus:ring-2 focus:ring-brand aria-pressed:border-brand aria-pressed:bg-emerald-50';
       button.setAttribute('aria-pressed', String(assetSelect.value === asset.id));
-      button.disabled = !markets.has(asset.id) || asset.networks.length === 0;
+      button.disabled = false;
       button.append(logoImage(cryptoLogos[asset.id], asset.id, 'h-9 w-9 shrink-0 rounded-full bg-white object-contain p-1'));
       const labels = document.createElement('span');
       labels.className = 'min-w-0';
@@ -163,14 +163,23 @@
     const oldNetwork = networkSelect.value;
     const available = asset?.networks || [];
     networkSelect.innerHTML = '<option value="">Choisir un réseau</option>' + available.map(
-      (network) => `<option value="${Dae.escapeHTML(network.id)}">${Dae.escapeHTML(network.name)}</option>`
+      (network) => `<option value="${Dae.escapeHTML(network.id)}" ${mode === 'sell' && !network.available ? 'disabled' : ''}>${Dae.escapeHTML(network.name)}${mode === 'sell' && !network.available ? ' — adresse à configurer' : ''}</option>`
     ).join('');
-    if (available.some((network) => network.id === oldNetwork)) networkSelect.value = oldNetwork;
+    if (available.some((network) => network.id === oldNetwork
+      && (mode !== 'sell' || network.available))) networkSelect.value = oldNetwork;
     if (!available.length && asset) {
       const option = document.createElement('option');
       option.value = '';
       option.textContent = 'Aucun réseau disponible — contactez-nous';
       networkSelect.appendChild(option);
+    }
+    const networkStatus = document.getElementById('network-status');
+    if (networkStatus) {
+      const hasSellNetwork = available.some((network) => network.available);
+      networkStatus.textContent = mode === 'sell' && asset && !hasSellNetwork
+        ? 'Aucune adresse de dépôt n’est configurée pour cet actif. Contactez l’administrateur.'
+        : '';
+      networkStatus.classList.toggle('hidden', !networkStatus.textContent);
     }
     updateWalletLimit();
     updateQuote();
@@ -368,30 +377,28 @@
 
   (async () => {
     try {
-      const [loadedConfig, rates, marketData] = await Promise.all([
+      const [loadedConfig, rates] = await Promise.all([
         Dae.api('/api/config'),
         Dae.api('/api/rates'),
-        Dae.api('/api/markets'),
       ]);
       config = loadedConfig;
       exchangeRate = rates;
-      markets = new Map(marketData.markets.map((market) => [market.asset, market]));
-      marketsStale = marketData.stale;
-      marketSource = marketData.source;
       renderAssetPicker();
       fillNetworks();
-      window.setInterval(async () => {
+      async function refreshMarkets() {
         try {
           const latest = await Dae.api('/api/markets');
           markets = new Map(latest.markets.map((market) => [market.asset, market]));
           marketsStale = latest.stale;
-          marketSource = latest.source;
+          marketSource = latest.source || 'API publique';
           updateQuote();
           updatePaymentDetails();
-        } catch {
-          quoteRate.textContent = 'Actualisation du cours impossible. Le cours affiché peut avoir changé.';
+        } catch (error) {
+          quoteRate.textContent = `Cours temporairement indisponibles : ${error.message}`;
         }
-      }, 60_000);
+      }
+      await refreshMarkets();
+      window.setInterval(refreshMarkets, 60_000);
     } catch (error) {
       showError(`Impossible de charger les réseaux ou les cours : ${error.message}`);
     }
