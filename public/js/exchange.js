@@ -180,8 +180,12 @@
   function updatePaymentDetails() {
     if (!config) return;
     if (mode === 'buy') {
-      document.getElementById('pay-destination').textContent =
-        config.paymentNumbers?.[operatorSelect.value] || 'Numéro Mobile Money non configuré';
+      const payDestination = document.getElementById('pay-destination');
+      const payNumber = config.paymentNumbers?.[operatorSelect.value];
+      const recipientName = config.paymentRecipientNames?.[operatorSelect.value];
+      payDestination.textContent = payNumber
+        ? `${recipientName ? `${recipientName} · ` : ''}${payNumber}`
+        : 'Numéro Mobile Money non configuré';
       document.getElementById('pay-instructions').textContent = config.paymentInstructions || '';
       document.getElementById('buy-summary').innerHTML = buildSummary();
     } else {
@@ -268,7 +272,7 @@
     if (currentStep !== 2) return;
     const fields = mode === 'buy'
       ? [form.elements.wallet, form.elements.phone, form.elements.email]
-      : [form.elements.phone, form.elements.email];
+      : [form.elements.phone, form.elements.recipientName, form.elements.email];
     if (!operatorSelect.value || !fields.every((field) => field.reportValidity())) {
       if (!operatorSelect.value) showError('Choisissez un moyen de paiement Mobile Money.');
       return;
@@ -346,6 +350,7 @@
           network: networkSelect.value,
           operator: operatorSelect.value,
           phone: form.elements.phone.value,
+          recipientName: mode === 'sell' ? form.elements.recipientName.value : undefined,
           email: form.elements.email.value,
           wallet: mode === 'buy' ? form.elements.wallet.value : undefined,
           proof: form.elements.proof.value,
@@ -353,7 +358,7 @@
         }),
       });
       const emailNotice = order.notificationSent ? '' : '&notification=failed';
-      window.location.assign(`/attente.html?ref=${encodeURIComponent(order.ref)}${emailNotice}`);
+      window.location.assign(`/attente?ref=${encodeURIComponent(order.ref)}${emailNotice}`);
     } catch (error) {
       showError(error.message);
       submitButton.disabled = false;

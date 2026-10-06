@@ -7,6 +7,10 @@ const siteConfigSchema = new mongoose.Schema(
       mtn: { type: String, default: '' },
       airtel: { type: String, default: '' },
     },
+    paymentRecipientNames: {
+      mtn: { type: String, default: '' },
+      airtel: { type: String, default: '' },
+    },
     paymentInstructions: { type: String, default: '' },
     receivingAddresses: { type: mongoose.Schema.Types.Mixed, default: {} },
     contactWhatsApp: { type: String, default: '' },

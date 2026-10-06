@@ -56,7 +56,7 @@
       const asset = order.asset || 'USDT';
       const payout = order.mode === 'buy'
         ? `<p class="mt-1"><strong>Mobile Money client :</strong> ${Dae.escapeHTML(order.operator)} · ${Dae.escapeHTML(order.phone)}</p><p class="mt-1 break-all"><strong>Portefeuille client :</strong> ${Dae.escapeHTML(order.wallet || '—')}</p>`
-        : `<p class="mt-1"><strong>Mobile Money client :</strong> ${Dae.escapeHTML(order.operator)} · ${Dae.escapeHTML(order.phone)}</p>`;
+        : `<p class="mt-1"><strong>Mobile Money client :</strong> ${Dae.escapeHTML(order.operator)} · ${Dae.escapeHTML(order.phone)} · ${Dae.escapeHTML(order.recipientName || 'Nom non renseigné')}</p>`;
       const acceptLabel = order.status === 'processing' ? 'Marquer terminée' : 'Valider / traiter';
       const acceptStatus = order.status === 'processing' ? 'completed' : 'processing';
       const canAccept = ['created', 'payment_declared', 'processing'].includes(order.status);
@@ -170,6 +170,8 @@
     const form = document.getElementById('settings-form');
     form.elements.paymentMtn.value = config.paymentNumbers.mtn || '';
     form.elements.paymentAirtel.value = config.paymentNumbers.airtel || '';
+    form.elements.paymentRecipientMtn.value = config.paymentRecipientNames?.mtn || '';
+    form.elements.paymentRecipientAirtel.value = config.paymentRecipientNames?.airtel || '';
     form.elements.paymentInstructions.value = config.paymentInstructions || '';
     form.elements.contactWhatsApp.value = config.contactWhatsApp || '';
     form.elements.contactEmail.value = config.contactEmail || '';
@@ -253,6 +255,10 @@
         method: 'PUT', admin: true,
         body: JSON.stringify({
           paymentNumbers: { mtn: form.elements.paymentMtn.value, airtel: form.elements.paymentAirtel.value },
+          paymentRecipientNames: {
+            mtn: form.elements.paymentRecipientMtn.value,
+            airtel: form.elements.paymentRecipientAirtel.value,
+          },
           paymentInstructions: form.elements.paymentInstructions.value,
           contactWhatsApp: form.elements.contactWhatsApp.value,
           contactEmail: form.elements.contactEmail.value,

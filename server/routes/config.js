@@ -32,6 +32,7 @@ router.get('/', async (req, res, next) => {
     const receivingAddresses = config?.receivingAddresses || {};
     res.json({
       paymentNumbers: config?.paymentNumbers || { mtn: '', airtel: '' },
+      paymentRecipientNames: config?.paymentRecipientNames || { mtn: '', airtel: '' },
       paymentInstructions: config?.paymentInstructions || '',
       contactWhatsApp: config?.contactWhatsApp || '',
       contactEmail: config?.contactEmail || '',

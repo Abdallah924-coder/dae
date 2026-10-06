@@ -44,7 +44,7 @@ async function expireIfNeeded(order) {
 // Achat : amount est une valeur en USDT. Vente : amount est une quantité de crypto.
 router.post('/', async (req, res, next) => {
   try {
-    const { mode, asset: assetId, amount, network, operator, phone, wallet, email, proof, proofImage } = req.body || {};
+    const { mode, asset: assetId, amount, network, operator, phone, recipientName, wallet, email, proof, proofImage } = req.body || {};
     const value = Number(amount);
     const asset = assets.find((item) => item.id === assetId);
 
@@ -62,6 +62,10 @@ router.post('/', async (req, res, next) => {
 
     const cleanPhone = String(phone || '').replace(/\s/g, '');
     if (!PHONE_RE.test(cleanPhone)) return res.status(400).json({ error: 'Numéro de téléphone invalide' });
+    const cleanRecipientName = String(recipientName || '').trim();
+    if (mode === 'sell' && (!cleanRecipientName || cleanRecipientName.length > 100)) {
+      return res.status(400).json({ error: 'Le nom du bénéficiaire Mobile Money est requis (100 caractères maximum)' });
+    }
 
     const config = await SiteConfig.findOne({ key: 'main' }).lean();
     const configuredNetwork = config?.receivingAddresses?.[asset.id]?.[network];
@@ -144,6 +148,7 @@ router.post('/', async (req, res, next) => {
       networkName: typeof configuredNetwork === 'string' ? network : configuredNetwork?.name || network,
       operator,
       phone: cleanPhone,
+      recipientName: cleanRecipientName || undefined,
       email: cleanEmail,
       wallet: cleanWallet,
       proof: cleanProof || undefined,

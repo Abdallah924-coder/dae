@@ -22,6 +22,12 @@
 5. Vérifiez l’URL Render et `/healthz`. La réponse doit être HTTP 200 avec `{"status":"ok"}`; une base non connectée retourne HTTP 503.
 6. Testez une connexion admin, une commande et l’envoi du formulaire de contact.
 
+## URLs du site
+
+Les pages utilisent des chemins sans suffixe `.html` : `/`, `/acheter`, `/vendre`, `/attente`, `/suivi`, `/contact` et `/admin`. Les anciennes URLs en `.html` redirigent vers ces chemins.
+
+Depuis l’administration, les numéros Mobile Money MTN/Airtel peuvent être enregistrés avec le nom du bénéficiaire. Pour une vente, le client renseigne également le nom associé à son numéro Mobile Money.
+
 Les secrets sont saisis dans Render et ne doivent pas être copiés dans `render.yaml`, un dépôt Git ou un ticket. Le fichier `.env` local est exclu du dépôt par `.gitignore`.
 
 Le plan `free` peut mettre le service en veille après une période d’inactivité; le premier accès suivant peut alors être lent. Sélectionnez un plan payant dans Render si le service doit rester disponible sans mise en veille.

@@ -113,6 +113,7 @@ router.get('/settings', async (req, res, next) => {
     const config = await SiteConfig.findOne({ key: 'main' }).lean();
     res.json({
       paymentNumbers: config?.paymentNumbers || { mtn: '', airtel: '' },
+      paymentRecipientNames: config?.paymentRecipientNames || { mtn: '', airtel: '' },
       paymentInstructions: config?.paymentInstructions || '',
       receivingAddresses: config?.receivingAddresses || {},
       contactWhatsApp: config?.contactWhatsApp || '',
@@ -132,12 +133,18 @@ router.put('/settings', async (req, res, next) => {
   try {
     const input = req.body || {};
     const paymentNumbers = {};
+    const paymentRecipientNames = {};
     for (const operator of ['mtn', 'airtel']) {
       const phone = String(input.paymentNumbers?.[operator] || '').replace(/\s/g, '');
       if (phone && !/^\+?\d{8,15}$/.test(phone)) {
         return res.status(400).json({ error: `Numéro ${operator.toUpperCase()} invalide` });
       }
       paymentNumbers[operator] = phone;
+      const recipientName = String(input.paymentRecipientNames?.[operator] || '').trim();
+      if (recipientName.length > 100) {
+        return res.status(400).json({ error: `Le nom du bénéficiaire ${operator.toUpperCase()} est trop long` });
+      }
+      paymentRecipientNames[operator] = recipientName;
     }
 
     const receivingAddresses = {};
@@ -183,6 +190,7 @@ router.put('/settings', async (req, res, next) => {
       {
         $set: {
           paymentNumbers,
+          paymentRecipientNames,
           paymentInstructions,
           receivingAddresses,
           contactWhatsApp,

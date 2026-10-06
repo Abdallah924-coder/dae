@@ -24,6 +24,7 @@ const orderSchema = new mongoose.Schema(
     networkName: { type: String, maxlength: 80 },
     operator: { type: String, enum: ['mtn', 'airtel'], required: true },
     phone: { type: String, required: true },
+    recipientName: { type: String, maxlength: 100 },
     email: { type: String, maxlength: 160 },
     wallet: { type: String },
     proof: { type: String }, // ID de transaction MoMo (achat) ou hash (vente)

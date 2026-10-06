@@ -51,7 +51,7 @@
     event.preventDefault();
     const value = document.getElementById('reference-input').value.trim();
     if (value) {
-      window.history.replaceState({}, '', `/attente.html?ref=${encodeURIComponent(value)}`);
+      window.history.replaceState({}, '', `/attente?ref=${encodeURIComponent(value)}`);
       loadOrder(value);
     }
   });

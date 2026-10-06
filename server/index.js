@@ -19,7 +19,39 @@ app.get('/healthz', (req, res) => {
   }
   res.json({ status: 'ok' });
 });
-app.use(express.static(path.join(__dirname, '..', 'public')));
+const publicDirectory = path.join(__dirname, '..', 'public');
+const cleanPages = {
+  '/admin': 'admin.html',
+  '/acheter': 'achat.html',
+  '/vendre': 'vente.html',
+  '/attente': 'attente.html',
+  '/contact': 'contact.html',
+  '/suivi': 'suivi.html',
+};
+const legacyPages = {
+  '/admin.html': '/admin',
+  '/achat.html': '/acheter',
+  '/vente.html': '/vendre',
+  '/attente.html': '/attente',
+  '/contact.html': '/contact',
+  '/suivi.html': '/suivi',
+  '/index.html': '/',
+};
+
+for (const [route, filename] of Object.entries(cleanPages)) {
+  app.get(route, (req, res, next) => {
+    res.sendFile(path.join(publicDirectory, filename), (error) => {
+      if (error) next(error);
+    });
+  });
+}
+for (const [legacyPath, cleanPath] of Object.entries(legacyPages)) {
+  app.get(legacyPath, (req, res) => {
+    const query = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '';
+    res.redirect(301, `${cleanPath}${query}`);
+  });
+}
+app.use(express.static(publicDirectory));
 
 const orderLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 60 });
 const contactLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 5 });
