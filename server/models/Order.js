@@ -29,6 +29,9 @@ const orderSchema = new mongoose.Schema(
     wallet: { type: String },
     proof: { type: String }, // ID de transaction MoMo (achat) ou hash (vente)
     proofImage: { type: String, maxlength: 1600000 },
+    smsStatus: { type: String, enum: ['pending', 'sent', 'failed'], default: 'pending', index: true },
+    smsMessageId: { type: String },
+    smsError: { type: String, maxlength: 500 },
     status: { type: String, enum: STATUSES, default: 'created', index: true },
     expiresAt: { type: Date, required: true },
   },

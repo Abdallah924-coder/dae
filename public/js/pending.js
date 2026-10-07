@@ -20,6 +20,19 @@
     emailNotice.classList.remove('hidden');
   }
 
+  function showOrderNotice(order) {
+    if (!emailNotice) return;
+    if (order.smsStatus === 'sent') {
+      emailNotice.textContent = 'Transaction reçue. Elle est actuellement en attente de traitement. Un SMS de confirmation a été envoyé à votre numéro.';
+      emailNotice.classList.remove('hidden');
+      return;
+    }
+    if (order.smsStatus === 'failed') {
+      emailNotice.textContent = 'Votre transaction a bien été reçue et est en attente. Le SMS de confirmation n’a pas pu être envoyé, mais votre commande reste bien enregistrée.';
+      emailNotice.classList.remove('hidden');
+    }
+  }
+
   function showError(message) {
     error.textContent = message;
     error.classList.remove('hidden');
@@ -31,6 +44,7 @@
       const order = await Dae.api(`/api/orders/${encodeURIComponent(orderRef)}`);
       document.getElementById('pending-title').textContent = `Commande ${order.ref}`;
       document.getElementById('pending-status').textContent = statusText[order.status] || `Statut : ${order.status}`;
+      showOrderNotice(order);
       details.innerHTML = `<p><strong>Opération :</strong> ${order.mode === 'buy' ? 'Achat' : 'Vente'} ${Dae.escapeHTML(order.asset || 'USDT')}</p>
         <p class="mt-2"><strong>Montant crypto :</strong> ${Dae.escapeHTML(Dae.formatCrypto(order.amountCrypto ?? order.amountUsdt))} ${Dae.escapeHTML(order.asset || 'USDT')}</p>
         <p class="mt-2"><strong>Valeur estimée :</strong> ${Dae.escapeHTML(Dae.formatCrypto(order.amountUsdt, 4))} USDT</p>

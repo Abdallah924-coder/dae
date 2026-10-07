@@ -7,6 +7,7 @@ const SiteConfig = require('../models/SiteConfig');
 const assets = require('../config/cryptoAssets');
 const { getMarketPrices } = require('../services/marketData');
 const { orderSubmitted, orderReceivedByAdmin } = require('../services/email');
+const { normalizePhoneNumber, sendSMS } = require('../services/infobip');
 
 const router = express.Router();
 const HOLD_MINUTES = 15;
@@ -27,6 +28,9 @@ function publicView(o) {
     networkName: o.networkName || o.network,
     operator: o.operator,
     status: o.status,
+    smsStatus: o.smsStatus,
+    smsMessageId: o.smsMessageId,
+    smsError: o.smsError,
     expiresAt: o.expiresAt,
     createdAt: o.createdAt,
   };
@@ -182,7 +186,29 @@ router.post('/', async (req, res, next) => {
     if (!adminNotificationSent) {
       console.error(`Échec de la notification admin pour ${order.ref} (destinataire ${process.env.ADMIN_EMAIL || 'non configuré'}):`, adminMail.reason?.message || adminMail.reason);
     }
-    res.status(201).json({ ...publicView(order), notificationSent, adminNotificationSent });
+
+    const smsText = 'Votre transaction a bien été reçue et est actuellement en attente de traitement. Nous vous informerons dès sa validation.';
+    try {
+      const smsResult = await sendSMS(normalizePhoneNumber(order.phone), smsText);
+      order.smsStatus = 'sent';
+      order.smsMessageId = smsResult?.messages?.[0]?.messageId || smsResult?.messageId || undefined;
+      order.smsError = undefined;
+      await order.save();
+    } catch (error) {
+      order.smsStatus = 'failed';
+      order.smsError = error.message.slice(0, 500);
+      await order.save();
+      console.error(`Échec de l’envoi SMS pour ${order.ref}:`, error.message);
+    }
+
+    res.status(201).json({
+      ...publicView(order),
+      notificationSent,
+      adminNotificationSent,
+      smsStatus: order.smsStatus,
+      smsMessageId: order.smsMessageId,
+      smsError: order.smsError,
+    });
   } catch (err) {
     next(err);
   }
