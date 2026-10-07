@@ -187,7 +187,8 @@ router.post('/', async (req, res, next) => {
       console.error(`Échec de la notification admin pour ${order.ref} (destinataire ${process.env.ADMIN_EMAIL || 'non configuré'}):`, adminMail.reason?.message || adminMail.reason);
     }
 
-    const smsText = 'Votre transaction a bien été reçue et est actuellement en attente de traitement. Nous vous informerons dès sa validation.';
+    const companyName = process.env.COMPANY_NAME || 'DAE Crypto';
+    const smsText = `Votre transaction chez ${companyName} a bien été reçue et est actuellement en attente de traitement. Référence : ${order.ref}. Nous vous informerons dès sa validation.`;
     try {
       const smsResult = await sendSMS(normalizePhoneNumber(order.phone), smsText);
       order.smsStatus = 'sent';
