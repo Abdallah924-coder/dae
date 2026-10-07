@@ -6,6 +6,7 @@ const rateLimit = require('express-rate-limit');
 const mongoose = require('mongoose');
 const connectDB = require('./config/db');
 const errorHandler = require('./middleware/errorHandler');
+const SiteConfig = require('./models/SiteConfig');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -20,6 +21,36 @@ app.get('/healthz', (req, res) => {
   res.json({ status: 'ok' });
 });
 const publicDirectory = path.join(__dirname, '..', 'public');
+let maintenanceCache = { checkedAt: 0, enabled: false, message: '' };
+app.use(async (req, res, next) => {
+  if (req.path === '/healthz'
+    || req.path === '/admin'
+    || req.path.startsWith('/api/admin')
+    || path.extname(req.path)) return next();
+
+  try {
+    if (Date.now() - maintenanceCache.checkedAt > 3000) {
+      const config = await SiteConfig.findOne({ key: 'main' }).select('maintenance').lean();
+      maintenanceCache = {
+        checkedAt: Date.now(),
+        enabled: Boolean(config?.maintenance?.enabled),
+        message: config?.maintenance?.message || 'Le site est temporairement en maintenance. Revenez bientôt.',
+      };
+    }
+    if (!maintenanceCache.enabled) return next();
+    if (req.path.startsWith('/api/')) {
+      return res.status(503).json({
+        error: maintenanceCache.message,
+        maintenance: true,
+      });
+    }
+    res.status(503).sendFile(path.join(publicDirectory, 'maintenance.html'), (error) => {
+      if (error) next(error);
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 const cleanPages = {
   '/admin': 'admin.html',
   '/acheter': 'achat.html',

@@ -34,6 +34,46 @@ function configuredNetworks(config, asset) {
   return asset.networks.map((network) => ({ ...network, address: '' }));
 }
 
+router.get('/dashboard', async (req, res, next) => {
+  try {
+    const groups = await Order.aggregate([
+      {
+        $group: {
+          _id: { mode: '$mode', status: '$status' },
+          count: { $sum: 1 },
+          amountXaf: { $sum: '$amountXaf' },
+        },
+      },
+    ]);
+    const summary = {
+      total: { count: 0, amountXaf: 0 },
+      buy: { count: 0, amountXaf: 0, completedCount: 0, completedXaf: 0, pendingCount: 0, pendingXaf: 0 },
+      sell: { count: 0, amountXaf: 0, completedCount: 0, completedXaf: 0, pendingCount: 0, pendingXaf: 0 },
+      pendingCount: 0,
+    };
+    for (const group of groups) {
+      const side = summary[group._id.mode];
+      if (!side) continue;
+      summary.total.count += group.count;
+      summary.total.amountXaf += group.amountXaf;
+      side.count += group.count;
+      side.amountXaf += group.amountXaf;
+      if (group._id.status === 'completed') {
+        side.completedCount += group.count;
+        side.completedXaf += group.amountXaf;
+      }
+      if (['created', 'payment_declared', 'processing'].includes(group._id.status)) {
+        summary.pendingCount += group.count;
+        side.pendingCount += group.count;
+        side.pendingXaf += group.amountXaf;
+      }
+    }
+    res.json(summary);
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Liste des commandes (filtre ?status=...)
 router.get('/orders', async (req, res, next) => {
   try {
@@ -118,6 +158,10 @@ router.get('/settings', async (req, res, next) => {
       receivingAddresses: config?.receivingAddresses || {},
       contactWhatsApp: config?.contactWhatsApp || '',
       contactEmail: config?.contactEmail || '',
+      maintenance: config?.maintenance || {
+        enabled: false,
+        message: 'Le site est temporairement en maintenance. Revenez bientôt.',
+      },
       assets: assets.map((asset) => ({
         id: asset.id,
         name: asset.name,
@@ -172,9 +216,12 @@ router.put('/settings', async (req, res, next) => {
       }
     }
 
-    const contactWhatsApp = String(input.contactWhatsApp || '').replace(/\s/g, '');
-    if (contactWhatsApp && !/^\+?\d{8,15}$/.test(contactWhatsApp)) {
-      return res.status(400).json({ error: 'Numéro WhatsApp invalide' });
+    const rawWhatsApp = String(input.contactWhatsApp || '').trim();
+    const contactWhatsApp = rawWhatsApp.startsWith('https://chat.whatsapp.com/')
+      ? rawWhatsApp
+      : rawWhatsApp.replace(/\s/g, '');
+    if (contactWhatsApp && !/^(?:\+?\d{8,15}|https:\/\/chat\.whatsapp\.com\/[A-Za-z0-9]+\/?)$/.test(contactWhatsApp)) {
+      return res.status(400).json({ error: 'Lien de groupe ou numéro WhatsApp invalide' });
     }
     const contactEmail = String(input.contactEmail || '').trim();
     if (contactEmail.length > 160 || (contactEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail))) {
@@ -183,6 +230,10 @@ router.put('/settings', async (req, res, next) => {
     const paymentInstructions = String(input.paymentInstructions || '').trim();
     if (paymentInstructions.length > 500) {
       return res.status(400).json({ error: 'Les instructions de paiement sont trop longues' });
+    }
+    const maintenanceMessage = String(input.maintenance?.message || '').trim();
+    if (maintenanceMessage.length > 500) {
+      return res.status(400).json({ error: 'Le message de maintenance est trop long (500 caractères maximum)' });
     }
 
     const config = await SiteConfig.findOneAndUpdate(
@@ -195,6 +246,11 @@ router.put('/settings', async (req, res, next) => {
           receivingAddresses,
           contactWhatsApp,
           contactEmail,
+          maintenance: {
+            enabled: Boolean(input.maintenance?.enabled),
+            message: maintenanceMessage
+              || 'Le site est temporairement en maintenance. Revenez bientôt.',
+          },
         },
       },
       { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true }

@@ -65,6 +65,32 @@ function orderSubmitted(order) {
   });
 }
 
+function orderReceivedByAdmin(order) {
+  const action = order.mode === 'buy' ? 'Achat' : 'Vente';
+  const publicUrl = (process.env.PUBLIC_APP_URL || process.env.RENDER_EXTERNAL_URL || 'https://dae-1lpj.onrender.com').replace(/\/+$/, '');
+  const adminUrl = `${publicUrl}/admin`;
+  const recipient = order.mode === 'sell' ? `\nBénéficiaire Mobile Money : ${order.recipientName}` : '';
+  const wallet = order.mode === 'buy' ? `\nPortefeuille de réception : ${order.wallet}` : '';
+  const text = [
+    `Nouvelle demande de ${action.toLowerCase()} reçue sur DAE Crypto.`,
+    `Référence : ${order.ref}`,
+    `Client : ${order.email}`,
+    `Téléphone Mobile Money : ${order.operator} · ${order.phone}${recipient}`,
+    `Montant : ${order.amountCrypto} ${order.asset}`,
+    `Valeur : ${order.amountXaf} FCFA (${order.amountUsdt} USDT)`,
+    `Réseau : ${order.networkName || order.network}`,
+    wallet,
+    `Preuve : ${order.proof || 'Non fournie'}`,
+    `Ouvrir l’administration : ${adminUrl}`,
+  ].filter(Boolean).join('\n');
+  return sendEmail({
+    to: process.env.ADMIN_EMAIL?.trim(),
+    subject: `Nouvelle demande ${action.toLowerCase()} — ${order.ref}`,
+    text,
+    html: `<h2>Nouvelle demande de ${escapeHtml(action.toLowerCase())}</h2><ul><li>Référence : ${escapeHtml(order.ref)}</li><li>Client : ${escapeHtml(order.email)}</li><li>Mobile Money : ${escapeHtml(order.operator)} · ${escapeHtml(order.phone)}${order.mode === 'sell' ? ` · ${escapeHtml(order.recipientName)}` : ''}</li><li>Montant : ${escapeHtml(order.amountCrypto)} ${escapeHtml(order.asset)}</li><li>Valeur : ${escapeHtml(order.amountXaf)} FCFA (${escapeHtml(order.amountUsdt)} USDT)</li><li>Réseau : ${escapeHtml(order.networkName || order.network)}</li>${order.mode === 'buy' ? `<li>Portefeuille : ${escapeHtml(order.wallet || '')}</li>` : ''}<li>Preuve : ${escapeHtml(order.proof || 'Non fournie')}</li></ul><p><a href="${escapeHtml(adminUrl)}">Ouvrir l’administration</a></p>`,
+  });
+}
+
 function orderStatusChanged(order, status) {
   const messages = {
     processing: ['confirmée et en cours de traitement', 'Votre demande a été confirmée et notre équipe traite votre opération.'],
@@ -96,4 +122,4 @@ function contactMessage({ name, email, message }) {
   });
 }
 
-module.exports = { sendEmail, orderSubmitted, orderStatusChanged, contactMessage };
+module.exports = { sendEmail, orderSubmitted, orderReceivedByAdmin, orderStatusChanged, contactMessage };

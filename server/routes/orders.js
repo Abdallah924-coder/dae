@@ -6,7 +6,7 @@ const OrderEvent = require('../models/OrderEvent');
 const SiteConfig = require('../models/SiteConfig');
 const assets = require('../config/cryptoAssets');
 const { getMarketPrices } = require('../services/marketData');
-const { orderSubmitted } = require('../services/email');
+const { orderSubmitted, orderReceivedByAdmin } = require('../services/email');
 
 const router = express.Router();
 const HOLD_MINUTES = 15;
@@ -170,14 +170,19 @@ router.post('/', async (req, res, next) => {
       to: cleanProof ? 'payment_declared' : 'created',
     });
 
-    let notificationSent = true;
-    try {
-      await orderSubmitted(order);
-    } catch (error) {
-      notificationSent = false;
-      console.error(`Échec de l’e-mail de réception de la commande ${order.ref}:`, error.message);
+    const [clientMail, adminMail] = await Promise.allSettled([
+      orderSubmitted(order),
+      orderReceivedByAdmin(order),
+    ]);
+    const notificationSent = clientMail.status === 'fulfilled';
+    const adminNotificationSent = adminMail.status === 'fulfilled';
+    if (!notificationSent) {
+      console.error(`Échec de l’e-mail de réception client pour ${order.ref}:`, clientMail.reason?.message || clientMail.reason);
     }
-    res.status(201).json({ ...publicView(order), notificationSent });
+    if (!adminNotificationSent) {
+      console.error(`Échec de la notification admin pour ${order.ref} (destinataire ${process.env.ADMIN_EMAIL || 'non configuré'}):`, adminMail.reason?.message || adminMail.reason);
+    }
+    res.status(201).json({ ...publicView(order), notificationSent, adminNotificationSent });
   } catch (err) {
     next(err);
   }

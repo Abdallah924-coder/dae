@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <link rel="icon" type="image/png" href="/images/dae-mark.png">
+  <title>Maintenance — DAE Crypto</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { min-height: 100vh; margin: 0; display: grid; place-items: center; padding: 24px; background: #f8fafc; color: #17211f; font: 16px/1.6 system-ui, sans-serif; }
+    main { width: min(100%, 600px); padding: 40px; border: 1px solid #e2e8f0; border-radius: 24px; background: #fff; text-align: center; box-shadow: 0 12px 36px #0f172a0d; }
+    img { width: min(280px, 80%); height: auto; }
+    h1 { margin: 32px 0 8px; font-size: clamp(28px, 7vw, 40px); line-height: 1.15; }
+    p { margin: 12px 0 0; color: #64748b; }
+    @media (max-width: 480px) { main { padding: 28px 20px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <img src="/images/dae-logo.png" alt="Digital Asset Exchange">
+    <h1>Nous revenons bientôt</h1>
+    <p id="maintenance-message">Le site est temporairement en maintenance. Revenez bientôt.</p>
+  </main>
+  <script>
+    fetch('/api/config').then(async (response) => {
+      const data = await response.json();
+      if (!response.ok) throw data;
+      return data;
+    }).then((config) => {
+      if (config.maintenance?.message) {
+        document.getElementById('maintenance-message').textContent = config.maintenance.message;
+      }
+    }).catch((error) => {
+      if (error.error) document.getElementById('maintenance-message').textContent = error.error;
+    });
+  </script>
+</body>
+</html>

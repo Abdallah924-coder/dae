@@ -26,7 +26,7 @@
 
   async function loadAdmin() {
     try {
-      await loadOrders();
+      await Promise.all([loadOrders(), loadDashboard()]);
       loginPanel.classList.add('hidden');
       adminPanel.classList.remove('hidden');
       document.getElementById('logout-button').classList.remove('hidden');
@@ -42,6 +42,26 @@
       button.className = `rounded-t-xl px-4 py-3 text-sm font-bold ${active ? 'bg-white text-brand' : 'text-slate-500'}`;
     });
     document.querySelectorAll('[data-panel]').forEach((panel) => panel.classList.toggle('hidden', panel.dataset.panel !== tabName));
+  }
+
+  function summaryCard(label, value, detail) {
+    return `<article class="rounded-2xl border border-slate-200 bg-white p-4"><p class="text-xs font-semibold text-slate-500">${Dae.escapeHTML(label)}</p><p class="mt-2 text-xl font-black">${Dae.escapeHTML(value)}</p><p class="mt-1 text-xs text-slate-500">${Dae.escapeHTML(detail)}</p></article>`;
+  }
+
+  async function loadDashboard() {
+    const data = await Dae.api('/api/admin/dashboard', { admin: true });
+    document.getElementById('dashboard-summary').innerHTML = [
+      summaryCard('Demandes totales', data.total.count, Dae.formatXaf(data.total.amountXaf)),
+      summaryCard('Achats réalisés', data.buy.completedCount, Dae.formatXaf(data.buy.completedXaf)),
+      summaryCard('Ventes réalisées', data.sell.completedCount, Dae.formatXaf(data.sell.completedXaf)),
+      summaryCard('Achats à traiter', data.buy.pendingCount, Dae.formatXaf(data.buy.pendingXaf)),
+      summaryCard('Ventes à traiter', data.sell.pendingCount, Dae.formatXaf(data.sell.pendingXaf)),
+    ].join('');
+    document.getElementById('dashboard-details').innerHTML = ['buy', 'sell'].map((mode) => {
+      const side = data[mode];
+      const label = mode === 'buy' ? 'Achats' : 'Ventes';
+      return `<article class="rounded-2xl border border-slate-200 bg-white p-5"><h3 class="text-lg font-bold">${label}</h3><dl class="mt-3 grid grid-cols-2 gap-3 text-sm"><div><dt class="text-slate-500">Demandes</dt><dd class="mt-1 font-bold">${side.count}</dd></div><div><dt class="text-slate-500">Volume demandé</dt><dd class="mt-1 font-bold">${Dae.escapeHTML(Dae.formatXaf(side.amountXaf))}</dd></div><div><dt class="text-slate-500">Terminées</dt><dd class="mt-1 font-bold">${side.completedCount}</dd></div><div><dt class="text-slate-500">Volume terminé</dt><dd class="mt-1 font-bold">${Dae.escapeHTML(Dae.formatXaf(side.completedXaf))}</dd></div></dl></article>`;
+    }).join('');
   }
 
   async function loadOrders() {
@@ -97,7 +117,7 @@
           notice(result.notificationSent === false
             ? `${actionMessage} Attention : l’e-mail de mise à jour n’a pas pu être envoyé.`
             : `${actionMessage} Un e-mail de statut a été envoyé au client.`);
-          await loadOrders();
+          await Promise.all([loadOrders(), loadDashboard()]);
         } catch (error) {
           notice(error.message, true);
           button.disabled = false;
@@ -173,8 +193,10 @@
     form.elements.paymentRecipientMtn.value = config.paymentRecipientNames?.mtn || '';
     form.elements.paymentRecipientAirtel.value = config.paymentRecipientNames?.airtel || '';
     form.elements.paymentInstructions.value = config.paymentInstructions || '';
-    form.elements.contactWhatsApp.value = config.contactWhatsApp || '';
+    form.elements.contactWhatsApp.value = config.contactWhatsApp || 'https://chat.whatsapp.com/I16HQ9O8ygRBeyzUhHn30N';
     form.elements.contactEmail.value = config.contactEmail || '';
+    form.elements.maintenanceEnabled.checked = Boolean(config.maintenance?.enabled);
+    form.elements.maintenanceMessage.value = config.maintenance?.message || 'Le site est temporairement en maintenance. Revenez bientôt.';
     const addresses = document.getElementById('network-addresses');
     addresses.innerHTML = config.assets.map((asset) => `<fieldset class="rounded-2xl border border-slate-200 bg-white p-5 md:p-6"><legend class="px-2 text-lg font-bold">${Dae.escapeHTML(asset.id)} · ${Dae.escapeHTML(asset.name)}</legend><p class="mb-4 text-sm text-slate-500">Configurez au moins 3 réseaux. Les réseaux peuvent être natifs ou enveloppés ; indiquez-le précisément dans leur nom.</p><div data-network-list="${Dae.escapeHTML(asset.id)}" class="space-y-3">${asset.networks.map((network) => networkRow(asset.id, network)).join('')}</div><button type="button" data-add-network="${Dae.escapeHTML(asset.id)}" class="mt-4 rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-brand hover:bg-emerald-50">Ajouter un réseau</button></fieldset>`).join('');
   }
@@ -208,13 +230,16 @@
   document.querySelectorAll('[data-tab]').forEach((button) => button.addEventListener('click', async () => {
     setTab(button.dataset.tab);
     try {
+      if (button.dataset.tab === 'dashboard') await loadDashboard();
       if (button.dataset.tab === 'rates') await loadRates();
       if (button.dataset.tab === 'settings') await loadSettings();
     } catch (error) {
       notice(error.message, true);
     }
   }));
-  document.getElementById('refresh-orders').addEventListener('click', () => loadOrders().catch((error) => notice(error.message, true)));
+  document.getElementById('refresh-orders').addEventListener('click', () => {
+    Promise.all([loadOrders(), loadDashboard()]).catch((error) => notice(error.message, true));
+  });
   document.getElementById('status-filter').addEventListener('change', () => loadOrders().catch((error) => notice(error.message, true)));
   document.getElementById('rate-form').addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -262,6 +287,10 @@
           paymentInstructions: form.elements.paymentInstructions.value,
           contactWhatsApp: form.elements.contactWhatsApp.value,
           contactEmail: form.elements.contactEmail.value,
+          maintenance: {
+            enabled: form.elements.maintenanceEnabled.checked,
+            message: form.elements.maintenanceMessage.value,
+          },
           networks,
         }),
       });

@@ -30,8 +30,12 @@ router.get('/', async (req, res, next) => {
       paymentNumbers: config?.paymentNumbers || { mtn: '', airtel: '' },
       paymentRecipientNames: config?.paymentRecipientNames || { mtn: '', airtel: '' },
       paymentInstructions: config?.paymentInstructions || '',
-      contactWhatsApp: config?.contactWhatsApp || '',
+      contactWhatsApp: config?.contactWhatsApp || 'https://chat.whatsapp.com/I16HQ9O8ygRBeyzUhHn30N',
       contactEmail: config?.contactEmail || '',
+      maintenance: config?.maintenance || {
+        enabled: false,
+        message: 'Le site est temporairement en maintenance. Revenez bientôt.',
+      },
       assets: assets.map((asset) => ({
         id: asset.id,
         name: asset.name,

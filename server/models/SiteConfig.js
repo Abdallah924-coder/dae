@@ -15,6 +15,10 @@ const siteConfigSchema = new mongoose.Schema(
     receivingAddresses: { type: mongoose.Schema.Types.Mixed, default: {} },
     contactWhatsApp: { type: String, default: '' },
     contactEmail: { type: String, default: '' },
+    maintenance: {
+      enabled: { type: Boolean, default: false },
+      message: { type: String, default: 'Le site est temporairement en maintenance. Revenez bientôt.' },
+    },
   },
   { timestamps: true }
 );

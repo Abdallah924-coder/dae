@@ -7,8 +7,14 @@
   try {
     config = await Dae.api('/api/config');
     if (config.contactWhatsApp) {
-      whatsapp.href = `https://wa.me/${config.contactWhatsApp.replace(/\D/g, '')}`;
-      document.getElementById('whatsapp-number').textContent = config.contactWhatsApp;
+      const groupLink = config.contactWhatsApp.startsWith('https://chat.whatsapp.com/');
+      whatsapp.href = groupLink
+        ? config.contactWhatsApp
+        : `https://wa.me/${config.contactWhatsApp.replace(/\D/g, '')}`;
+      whatsapp.target = '_blank';
+      whatsapp.rel = 'noopener noreferrer';
+      document.getElementById('whatsapp-number').textContent =
+        groupLink ? 'Rejoindre le groupe WhatsApp DAE Crypto' : config.contactWhatsApp;
       whatsapp.classList.remove('hidden');
     }
     if (config.contactEmail) {

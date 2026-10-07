@@ -22,11 +22,15 @@
 5. Vérifiez l’URL Render et `/healthz`. La réponse doit être HTTP 200 avec `{"status":"ok"}`; une base non connectée retourne HTTP 503.
 6. Testez une connexion admin, une commande et l’envoi du formulaire de contact.
 
+`ADMIN_EMAIL` reçoit les messages du formulaire de contact et une notification à chaque nouvelle demande d’achat ou de vente. Les e-mails partent via Brevo; vérifiez aussi `BREVO_API_KEY` et `BREVO_SENDER_EMAIL`. La variable facultative `PUBLIC_APP_URL` permet de définir l’URL utilisée dans les notifications admin; Render fournit automatiquement `RENDER_EXTERNAL_URL` si elle n’est pas définie.
+
 ## URLs du site
 
 Les pages utilisent des chemins sans suffixe `.html` : `/`, `/acheter`, `/vendre`, `/attente`, `/suivi`, `/contact` et `/admin`. Les anciennes URLs en `.html` redirigent vers ces chemins.
 
 Depuis l’administration, les numéros Mobile Money MTN/Airtel peuvent être enregistrés avec le nom du bénéficiaire. Pour une vente, le client renseigne également le nom associé à son numéro Mobile Money.
+
+L’administration `/admin` propose aussi un tableau des achats et ventes, ainsi qu’un interrupteur de maintenance avec un message personnalisable. Les visiteurs voient la page de maintenance tandis que l’administration reste accessible.
 
 Les secrets sont saisis dans Render et ne doivent pas être copiés dans `render.yaml`, un dépôt Git ou un ticket. Le fichier `.env` local est exclu du dépôt par `.gitignore`.
 
