@@ -23,10 +23,13 @@ app.get('/healthz', (req, res) => {
 const publicDirectory = path.join(__dirname, '..', 'public');
 let maintenanceCache = { checkedAt: 0, enabled: false, message: '' };
 app.use(async (req, res, next) => {
-  if (req.path === '/healthz'
-    || req.path === '/admin'
-    || req.path.startsWith('/api/admin')
-    || path.extname(req.path)) return next();
+  if (
+    req.path === '/healthz' ||
+    req.path === '/admin' ||
+    req.path.startsWith('/api/admin') ||
+    path.extname(req.path)
+  )
+    return next();
 
   try {
     if (Date.now() - maintenanceCache.checkedAt > 3000) {
@@ -34,7 +37,9 @@ app.use(async (req, res, next) => {
       maintenanceCache = {
         checkedAt: Date.now(),
         enabled: Boolean(config?.maintenance?.enabled),
-        message: config?.maintenance?.message || 'Le site est temporairement en maintenance. Revenez bientôt.',
+        message:
+          config?.maintenance?.message ||
+          'Le site est temporairement en maintenance. Revenez bientôt.',
       };
     }
     if (!maintenanceCache.enabled) return next();
@@ -52,12 +57,13 @@ app.use(async (req, res, next) => {
   }
 });
 const cleanPages = {
-  '/admin': 'admin.html',
-  '/acheter': 'achat.html',
-  '/vendre': 'vente.html',
-  '/attente': 'attente.html',
-  '/contact': 'contact.html',
-  '/suivi': 'suivi.html',
+  '/': 'index.html',
+  '/admin': 'index.html',
+  '/acheter': 'index.html',
+  '/vendre': 'index.html',
+  '/attente': 'index.html',
+  '/contact': 'index.html',
+  '/suivi': 'index.html',
 };
 const legacyPages = {
   '/admin.html': '/admin',
@@ -71,14 +77,16 @@ const legacyPages = {
 
 for (const [route, filename] of Object.entries(cleanPages)) {
   app.get(route, (req, res, next) => {
-    res.sendFile(path.join(publicDirectory, filename), (error) => {
+    res.sendFile(path.join(publicDirectory, 'app', filename), (error) => {
       if (error) next(error);
     });
   });
 }
 for (const [legacyPath, cleanPath] of Object.entries(legacyPages)) {
   app.get(legacyPath, (req, res) => {
-    const query = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '';
+    const query = req.originalUrl.includes('?')
+      ? req.originalUrl.slice(req.originalUrl.indexOf('?'))
+      : '';
     res.redirect(301, `${cleanPath}${query}`);
   });
 }
@@ -94,10 +102,16 @@ app.use('/api/markets', require('./routes/markets'));
 app.use('/api/config', require('./routes/config'));
 app.use('/api/contact', contactLimiter, require('./routes/contact'));
 app.use('/api/orders', orderLimiter, require('./routes/orders'));
-app.use('/api/admin', adminLimiter, (req, res, next) => {
-  if (req.path === '/auth/login' && req.method === 'POST') return adminLoginLimiter(req, res, next);
-  next();
-}, require('./routes/admin'));
+app.use(
+  '/api/admin',
+  adminLimiter,
+  (req, res, next) => {
+    if (req.path === '/auth/login' && req.method === 'POST')
+      return adminLoginLimiter(req, res, next);
+    next();
+  },
+  require('./routes/admin'),
+);
 app.use('/api', (req, res) => res.status(404).json({ error: 'Route introuvable' }));
 
 app.use(errorHandler);

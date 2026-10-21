@@ -7,9 +7,13 @@ router.get('/', async (req, res, next) => {
   try {
     const rate = await Rate.findOne({
       $or: [{ asset: 'USDT' }, { asset: { $exists: false } }],
-    }).sort({ createdAt: -1 }).lean();
+    })
+      .sort({ createdAt: -1 })
+      .lean();
     res.json({
-      usdtXafRate: rate?.buyRate ?? 640,
+      buyRate: rate?.buyRate ?? 635,
+      sellRate: rate?.sellRate ?? 580,
+      usdtXafRate: rate?.buyRate ?? 635,
       buyMinXaf: rate?.buyMinXaf ?? rate?.minXaf ?? 10000,
       buyMaxXaf: rate?.buyMaxXaf ?? rate?.maxXaf ?? 500000,
       sellMinXaf: rate?.sellMinXaf ?? rate?.minXaf ?? 10000,

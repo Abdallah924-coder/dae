@@ -4,9 +4,12 @@
   "description": "",
   "main": "server/index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "vite build",
+    "format": "prettier --write \"client/src/**/*.{js,jsx,css}\" server/index.js server/routes/admin.js server/routes/orders.js server/routes/rates.js server/seed.js vite.config.js",
+    "test": "node --test",
     "start": "node server/index.js",
-    "dev": "nodemon server/index.js",
+    "dev": "node --watch server/index.js",
+    "dev:client": "vite --host 0.0.0.0",
     "seed": "node server/seed.js"
   },
   "keywords": [],
@@ -18,9 +21,13 @@
     "express": "^5.2.1",
     "express-rate-limit": "^8.7.1",
     "helmet": "^8.3.0",
-    "mongoose": "^9.11.0"
+    "mongoose": "^9.11.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
   },
   "devDependencies": {
-    "nodemon": "^3.1.14"
+    "@vitejs/plugin-react": "^4.7.0",
+    "prettier": "^3.9.10",
+    "vite": "^6.3.5"
   }
 }

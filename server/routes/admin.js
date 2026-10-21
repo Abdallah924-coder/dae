@@ -27,7 +27,10 @@ function configuredNetworks(config, asset) {
   if (Object.keys(current).length) {
     return Object.entries(current).map(([id, value]) => ({
       id,
-      name: typeof value === 'string' ? asset.networks.find((network) => network.id === id)?.name || id : value.name || id,
+      name:
+        typeof value === 'string'
+          ? asset.networks.find((network) => network.id === id)?.name || id
+          : value.name || id,
       address: typeof value === 'string' ? value : value.address || '',
     }));
   }
@@ -47,8 +50,22 @@ router.get('/dashboard', async (req, res, next) => {
     ]);
     const summary = {
       total: { count: 0, amountXaf: 0 },
-      buy: { count: 0, amountXaf: 0, completedCount: 0, completedXaf: 0, pendingCount: 0, pendingXaf: 0 },
-      sell: { count: 0, amountXaf: 0, completedCount: 0, completedXaf: 0, pendingCount: 0, pendingXaf: 0 },
+      buy: {
+        count: 0,
+        amountXaf: 0,
+        completedCount: 0,
+        completedXaf: 0,
+        pendingCount: 0,
+        pendingXaf: 0,
+      },
+      sell: {
+        count: 0,
+        amountXaf: 0,
+        completedCount: 0,
+        completedXaf: 0,
+        pendingCount: 0,
+        pendingXaf: 0,
+      },
       pendingCount: 0,
     };
     for (const group of groups) {
@@ -79,7 +96,10 @@ router.get('/orders', async (req, res, next) => {
   try {
     const filter = {};
     if (Order.STATUSES.includes(req.query.status)) filter.status = req.query.status;
-    const orders = await Order.find(filter).select('-proofImage').sort({ createdAt: -1 }).limit(200);
+    const orders = await Order.find(filter)
+      .select('-proofImage')
+      .sort({ createdAt: -1 })
+      .limit(200);
     res.json(orders);
   } catch (err) {
     next(err);
@@ -98,7 +118,9 @@ router.get('/orders/:ref/proof', async (req, res, next) => {
 
 router.get('/orders/:ref/events', async (req, res, next) => {
   try {
-    const events = await OrderEvent.find({ orderRef: String(req.params.ref) }).sort({ createdAt: 1 }).lean();
+    const events = await OrderEvent.find({ orderRef: String(req.params.ref) })
+      .sort({ createdAt: 1 })
+      .lean();
     res.json(events);
   } catch (err) {
     next(err);
@@ -130,7 +152,10 @@ router.patch('/orders/:ref', async (req, res, next) => {
         await orderStatusChanged(order, status);
       } catch (error) {
         notificationSent = false;
-        console.error(`Échec de l’e-mail de mise à jour de la commande ${order.ref}:`, error.message);
+        console.error(
+          `Échec de l’e-mail de mise à jour de la commande ${order.ref}:`,
+          error.message,
+        );
       }
     }
     res.json({ ref: order.ref, status: order.status, notificationSent });
@@ -186,7 +211,9 @@ router.put('/settings', async (req, res, next) => {
       paymentNumbers[operator] = phone;
       const recipientName = String(input.paymentRecipientNames?.[operator] || '').trim();
       if (recipientName.length > 100) {
-        return res.status(400).json({ error: `Le nom du bénéficiaire ${operator.toUpperCase()} est trop long` });
+        return res
+          .status(400)
+          .json({ error: `Le nom du bénéficiaire ${operator.toUpperCase()} est trop long` });
       }
       paymentRecipientNames[operator] = recipientName;
     }
@@ -194,23 +221,41 @@ router.put('/settings', async (req, res, next) => {
     const receivingAddresses = {};
     for (const asset of assets) {
       const networks = input.networks?.[asset.id];
-      if (!Array.isArray(networks) || networks.length < 3 || networks.length > MAX_NETWORKS_PER_ASSET) {
-        return res.status(400).json({ error: `${asset.id} doit avoir entre 3 et ${MAX_NETWORKS_PER_ASSET} réseaux configurés` });
+      if (
+        !Array.isArray(networks) ||
+        networks.length < 3 ||
+        networks.length > MAX_NETWORKS_PER_ASSET
+      ) {
+        return res
+          .status(400)
+          .json({
+            error: `${asset.id} doit avoir entre 3 et ${MAX_NETWORKS_PER_ASSET} réseaux configurés`,
+          });
       }
       receivingAddresses[asset.id] = {};
       const ids = new Set();
       for (const network of networks) {
         if (!network || typeof network !== 'object' || Array.isArray(network)) {
-          return res.status(400).json({ error: `Configuration de réseau invalide pour ${asset.id}` });
+          return res
+            .status(400)
+            .json({ error: `Configuration de réseau invalide pour ${asset.id}` });
         }
         const id = String(network.id || '').trim();
         const name = String(network.name || '').trim();
         const address = String(network.address || '').trim();
-        if (!ID_RE.test(id) || ['constructor', 'prototype'].includes(id.toLowerCase()) || ids.has(id)) {
-          return res.status(400).json({ error: `Identifiant de réseau invalide ou dupliqué pour ${asset.id}` });
+        if (
+          !ID_RE.test(id) ||
+          ['constructor', 'prototype'].includes(id.toLowerCase()) ||
+          ids.has(id)
+        ) {
+          return res
+            .status(400)
+            .json({ error: `Identifiant de réseau invalide ou dupliqué pour ${asset.id}` });
         }
-        if (!name || name.length > 80) return res.status(400).json({ error: 'Nom de réseau invalide' });
-        if (address.length > 2000) return res.status(400).json({ error: 'Adresse de réception trop longue' });
+        if (!name || name.length > 80)
+          return res.status(400).json({ error: 'Nom de réseau invalide' });
+        if (address.length > 2000)
+          return res.status(400).json({ error: 'Adresse de réception trop longue' });
         ids.add(id);
         receivingAddresses[asset.id][id] = { name, address };
       }
@@ -220,11 +265,17 @@ router.put('/settings', async (req, res, next) => {
     const contactWhatsApp = rawWhatsApp.startsWith('https://chat.whatsapp.com/')
       ? rawWhatsApp
       : rawWhatsApp.replace(/\s/g, '');
-    if (contactWhatsApp && !/^(?:\+?\d{8,15}|https:\/\/chat\.whatsapp\.com\/[A-Za-z0-9]+\/?)$/.test(contactWhatsApp)) {
+    if (
+      contactWhatsApp &&
+      !/^(?:\+?\d{8,15}|https:\/\/chat\.whatsapp\.com\/[A-Za-z0-9]+\/?)$/.test(contactWhatsApp)
+    ) {
       return res.status(400).json({ error: 'Lien de groupe ou numéro WhatsApp invalide' });
     }
     const contactEmail = String(input.contactEmail || '').trim();
-    if (contactEmail.length > 160 || (contactEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail))) {
+    if (
+      contactEmail.length > 160 ||
+      (contactEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail))
+    ) {
       return res.status(400).json({ error: 'Adresse e-mail invalide' });
     }
     const paymentInstructions = String(input.paymentInstructions || '').trim();
@@ -233,7 +284,9 @@ router.put('/settings', async (req, res, next) => {
     }
     const maintenanceMessage = String(input.maintenance?.message || '').trim();
     if (maintenanceMessage.length > 500) {
-      return res.status(400).json({ error: 'Le message de maintenance est trop long (500 caractères maximum)' });
+      return res
+        .status(400)
+        .json({ error: 'Le message de maintenance est trop long (500 caractères maximum)' });
     }
 
     const config = await SiteConfig.findOneAndUpdate(
@@ -248,12 +301,12 @@ router.put('/settings', async (req, res, next) => {
           contactEmail,
           maintenance: {
             enabled: Boolean(input.maintenance?.enabled),
-            message: maintenanceMessage
-              || 'Le site est temporairement en maintenance. Revenez bientôt.',
+            message:
+              maintenanceMessage || 'Le site est temporairement en maintenance. Revenez bientôt.',
           },
         },
       },
-      { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true }
+      { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true },
     );
     res.json({ ok: true, updatedAt: config.updatedAt });
   } catch (err) {
@@ -264,20 +317,16 @@ router.put('/settings', async (req, res, next) => {
 // Taux commun pour l’USDT et conversion des autres cryptos à partir de leur cours USD.
 router.post('/rates', async (req, res, next) => {
   try {
-    const {
-      buyRate,
-      sellRate,
-      buyMinXaf,
-      buyMaxXaf,
-      sellMinXaf,
-      sellMaxXaf,
-    } = req.body || {};
+    const { buyRate, sellRate, buyMinXaf, buyMaxXaf, sellMinXaf, sellMaxXaf } = req.body || {};
     const nums = [buyRate, sellRate, buyMinXaf, buyMaxXaf, sellMinXaf, sellMaxXaf].map(Number);
-    if (nums[0] !== nums[1]
-      || nums.some((n) => !Number.isFinite(n) || n <= 0)
-      || nums[2] >= nums[3]
-      || nums[4] >= nums[5]) {
-      return res.status(400).json({ error: 'Le taux commun et les limites achat/vente sont invalides' });
+    if (
+      nums.some((n) => !Number.isFinite(n) || n <= 0) ||
+      nums[2] >= nums[3] ||
+      nums[4] >= nums[5]
+    ) {
+      return res
+        .status(400)
+        .json({ error: 'Le taux commun et les limites achat/vente sont invalides' });
     }
     const rate = await Rate.create({
       asset: 'USDT',
