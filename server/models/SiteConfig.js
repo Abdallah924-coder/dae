@@ -11,6 +11,7 @@ const siteConfigSchema = new mongoose.Schema(
       mtn: { type: String, default: '' },
       airtel: { type: String, default: '' },
     },
+    binancePayId: { type: String, default: '', maxlength: 32 },
     paymentInstructions: { type: String, default: '' },
     receivingAddresses: { type: mongoose.Schema.Types.Mixed, default: {} },
     contactWhatsApp: { type: String, default: '' },

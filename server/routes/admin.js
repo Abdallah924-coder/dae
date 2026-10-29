@@ -179,6 +179,7 @@ router.get('/settings', async (req, res, next) => {
     res.json({
       paymentNumbers: config?.paymentNumbers || { mtn: '', airtel: '' },
       paymentRecipientNames: config?.paymentRecipientNames || { mtn: '', airtel: '' },
+      binancePayId: config?.binancePayId || '',
       paymentInstructions: config?.paymentInstructions || '',
       receivingAddresses: config?.receivingAddresses || {},
       contactWhatsApp: config?.contactWhatsApp || '',
@@ -282,6 +283,10 @@ router.put('/settings', async (req, res, next) => {
     if (paymentInstructions.length > 500) {
       return res.status(400).json({ error: 'Les instructions de paiement sont trop longues' });
     }
+    const binancePayId = String(input.binancePayId || '').trim();
+    if (binancePayId && !/^\d{4,32}$/.test(binancePayId)) {
+      return res.status(400).json({ error: 'L’ID Binance doit contenir entre 4 et 32 chiffres' });
+    }
     const maintenanceMessage = String(input.maintenance?.message || '').trim();
     if (maintenanceMessage.length > 500) {
       return res
@@ -295,6 +300,7 @@ router.put('/settings', async (req, res, next) => {
         $set: {
           paymentNumbers,
           paymentRecipientNames,
+          binancePayId,
           paymentInstructions,
           receivingAddresses,
           contactWhatsApp,

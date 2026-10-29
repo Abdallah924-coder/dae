@@ -45,6 +45,10 @@ async function sendEmail({ to, subject, text, html, replyTo }) {
 
 function orderSubmitted(order) {
   const action = order.mode === 'buy' ? 'Achat' : 'Vente';
+  const transferDetails =
+    order.cryptoTransferMethod === 'binance_pay'
+      ? `Binance Pay · UID ${order.binancePayId}`
+      : `Réseau : ${order.networkName || order.network}`;
   const text = [
     `Bonjour,`,
     ``,
@@ -52,7 +56,7 @@ function orderSubmitted(order) {
     `Référence : ${order.ref}`,
     `Montant : ${order.amountCrypto} ${order.asset}`,
     `Valeur estimée : ${order.amountXaf} FCFA`,
-    `Réseau : ${order.networkName || order.network}`,
+    transferDetails,
     ``,
     `Votre opération est en attente de vérification. Vous recevrez un autre e-mail lorsque son statut sera mis à jour.`,
     `DAE Crypto`,
@@ -61,7 +65,7 @@ function orderSubmitted(order) {
     to: order.email,
     subject: `Demande ${action.toLowerCase()} reçue — ${order.ref}`,
     text,
-    html: `<p>Bonjour,</p><p>Votre demande de ${escapeHtml(action.toLowerCase())} <strong>${escapeHtml(order.asset)}</strong> a bien été reçue.</p><ul><li>Référence : ${escapeHtml(order.ref)}</li><li>Montant : ${escapeHtml(order.amountCrypto)} ${escapeHtml(order.asset)}</li><li>Valeur estimée : ${escapeHtml(order.amountXaf)} FCFA</li><li>Réseau : ${escapeHtml(order.networkName || order.network)}</li></ul><p>Votre opération est en attente de vérification. Vous recevrez un autre e-mail lorsque son statut sera mis à jour.</p><p>DAE Crypto</p>`,
+    html: `<p>Bonjour,</p><p>Votre demande de ${escapeHtml(action.toLowerCase())} <strong>${escapeHtml(order.asset)}</strong> a bien été reçue.</p><ul><li>Référence : ${escapeHtml(order.ref)}</li><li>Montant : ${escapeHtml(order.amountCrypto)} ${escapeHtml(order.asset)}</li><li>Valeur estimée : ${escapeHtml(order.amountXaf)} FCFA</li><li>${escapeHtml(transferDetails)}</li></ul><p>Votre opération est en attente de vérification. Vous recevrez un autre e-mail lorsque son statut sera mis à jour.</p><p>DAE Crypto</p>`,
   });
 }
 
@@ -71,6 +75,10 @@ function orderReceivedByAdmin(order) {
   const adminUrl = `${publicUrl}/admin`;
   const recipient = order.mode === 'sell' ? `\nBénéficiaire Mobile Money : ${order.recipientName}` : '';
   const wallet = order.mode === 'buy' ? `\nPortefeuille de réception : ${order.wallet}` : '';
+  const binance =
+    order.cryptoTransferMethod === 'binance_pay'
+      ? `\nBinance Pay UID destinataire : ${order.binancePayId}`
+      : '';
   const text = [
     `Nouvelle demande de ${action.toLowerCase()} reçue sur DAE Crypto.`,
     `Référence : ${order.ref}`,
@@ -80,6 +88,7 @@ function orderReceivedByAdmin(order) {
     `Valeur : ${order.amountXaf} FCFA (${order.amountUsdt} USDT)`,
     `Réseau : ${order.networkName || order.network}`,
     wallet,
+    binance,
     `Preuve : ${order.proof || 'Non fournie'}`,
     `Ouvrir l’administration : ${adminUrl}`,
   ].filter(Boolean).join('\n');
@@ -87,7 +96,7 @@ function orderReceivedByAdmin(order) {
     to: process.env.ADMIN_EMAIL?.trim(),
     subject: `Nouvelle demande ${action.toLowerCase()} — ${order.ref}`,
     text,
-    html: `<h2>Nouvelle demande de ${escapeHtml(action.toLowerCase())}</h2><ul><li>Référence : ${escapeHtml(order.ref)}</li><li>Client : ${escapeHtml(order.email)}</li><li>Mobile Money : ${escapeHtml(order.operator)} · ${escapeHtml(order.phone)}${order.mode === 'sell' ? ` · ${escapeHtml(order.recipientName)}` : ''}</li><li>Montant : ${escapeHtml(order.amountCrypto)} ${escapeHtml(order.asset)}</li><li>Valeur : ${escapeHtml(order.amountXaf)} FCFA (${escapeHtml(order.amountUsdt)} USDT)</li><li>Réseau : ${escapeHtml(order.networkName || order.network)}</li>${order.mode === 'buy' ? `<li>Portefeuille : ${escapeHtml(order.wallet || '')}</li>` : ''}<li>Preuve : ${escapeHtml(order.proof || 'Non fournie')}</li></ul><p><a href="${escapeHtml(adminUrl)}">Ouvrir l’administration</a></p>`,
+    html: `<h2>Nouvelle demande de ${escapeHtml(action.toLowerCase())}</h2><ul><li>Référence : ${escapeHtml(order.ref)}</li><li>Client : ${escapeHtml(order.email)}</li><li>Mobile Money : ${escapeHtml(order.operator)} · ${escapeHtml(order.phone)}${order.mode === 'sell' ? ` · ${escapeHtml(order.recipientName)}` : ''}</li><li>Montant : ${escapeHtml(order.amountCrypto)} ${escapeHtml(order.asset)}</li><li>Valeur : ${escapeHtml(order.amountXaf)} FCFA (${escapeHtml(order.amountUsdt)} USDT)</li><li>${escapeHtml(order.networkName || order.network)}</li>${order.mode === 'buy' && order.wallet ? `<li>Portefeuille : ${escapeHtml(order.wallet)}</li>` : ''}${order.cryptoTransferMethod === 'binance_pay' ? `<li>Binance Pay UID destinataire : ${escapeHtml(order.binancePayId || '')}</li>` : ''}<li>Preuve : ${escapeHtml(order.proof || 'Non fournie')}</li></ul><p><a href="${escapeHtml(adminUrl)}">Ouvrir l’administration</a></p>`,
   });
 }
 

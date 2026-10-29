@@ -18,3 +18,5 @@ L’API a besoin de `MONGODB_URI`. Les notifications e-mail, SMS et la connexion
 Render installe les dépendances, compile React avec `npm run build`, puis démarre Express. Le serveur sert les routes `/`, `/acheter`, `/vendre`, `/suivi`, `/attente`, `/contact` et `/admin` depuis l’application React. Les endpoints métier restent sous `/api`.
 
 Le taux par défaut est de **635 FCFA/USDT quand le client achète** et **580 FCFA/USDT quand il vend**. Les taux déjà enregistrés dans MongoDB restent prioritaires : pour une base existante, enregistrez ces deux montants dans Administration → Taux & limites afin de les appliquer aux commandes.
+
+Binance Pay est proposé comme transfert manuel, sans connexion à l’API Binance. Configurez le Binance UID de DAE dans Administration → Configuration. À l’achat, le client peut donner son UID pour recevoir les cryptos ; à la vente, il envoie les cryptos vers l’UID DAE affiché. Le paiement ou le versement en FCFA reste effectué par Mobile Money.

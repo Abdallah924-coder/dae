@@ -667,6 +667,47 @@ button:disabled {
   color: var(--muted);
   font-size: 10px;
 }
+.transfer-method-picker {
+  border: 0;
+  padding: 0;
+  margin: 18px 0;
+}
+.transfer-method-picker legend {
+  margin-bottom: 9px;
+  color: #344743;
+  font-size: 11px;
+  font-weight: 700;
+}
+.transfer-method-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px;
+}
+.transfer-method {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fff;
+  text-align: left;
+}
+.transfer-method.active {
+  border-color: var(--brand);
+  background: #f1f8f4;
+}
+.transfer-method:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.transfer-method strong {
+  font-size: 11px;
+}
+.transfer-method small {
+  color: var(--muted);
+  font-size: 9px;
+}
 .exchange-aside {
   background: #f4f8f5;
   border: 1px solid #e5eee9;

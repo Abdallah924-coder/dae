@@ -29,6 +29,7 @@ router.get('/', async (req, res, next) => {
     res.json({
       paymentNumbers: config?.paymentNumbers || { mtn: '', airtel: '' },
       paymentRecipientNames: config?.paymentRecipientNames || { mtn: '', airtel: '' },
+      binancePayId: config?.binancePayId || '',
       paymentInstructions: config?.paymentInstructions || '',
       contactWhatsApp: config?.contactWhatsApp || 'https://chat.whatsapp.com/I16HQ9O8ygRBeyzUhHn30N',
       contactEmail: config?.contactEmail || '',

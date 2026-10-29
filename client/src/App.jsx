@@ -360,6 +360,7 @@ function Exchange({ mode }) {
     [markets, setMarkets] = useState([]);
   const [asset, setAsset] = useState('USDT'),
     [network, setNetwork] = useState(''),
+    [cryptoTransferMethod, setCryptoTransferMethod] = useState('network'),
     [amount, setAmount] = useState('');
   const [step, setStep] = useState(1),
     [operator, setOperator] = useState('mtn'),
@@ -367,6 +368,7 @@ function Exchange({ mode }) {
     [error, setError] = useState('');
   const [form, setForm] = useState({
     wallet: '',
+    binancePayId: '',
     phone: '',
     recipientName: '',
     email: '',
@@ -394,7 +396,14 @@ function Exchange({ mode }) {
   }, []);
   const selectedAsset =
     config?.assets?.find((a) => a.id === asset) || assetsFallback.find((a) => a.id === asset);
-  const selectedNetwork = selectedAsset?.networks?.find((n) => n.id === network);
+  const selectedNetwork =
+    cryptoTransferMethod === 'binance_pay'
+      ? {
+          id: 'BINANCE_PAY',
+          name: 'Binance Pay (transfert interne)',
+          address: config?.binancePayId || '',
+        }
+      : selectedAsset?.networks?.find((n) => n.id === network);
   const price = asset === 'USDT' ? 1 : markets.find((m) => m.asset === asset)?.priceUsd;
   const quote = useMemo(() => {
     const value = Number(amount);
@@ -420,10 +429,17 @@ function Exchange({ mode }) {
     setAsset(id);
     setNetwork('');
   }
+  function changeCryptoTransferMethod(method) {
+    setCryptoTransferMethod(method);
+    setNetwork(method === 'binance_pay' ? 'BINANCE_PAY' : '');
+  }
   function advance() {
     setError('');
     if (step === 1) {
-      if (!quote || !network) return setError('Choisissez un réseau et un montant valide.');
+      if (!quote || (cryptoTransferMethod === 'network' && !network))
+        return setError('Choisissez un mode de transfert et un montant valide.');
+      if (mode === 'sell' && cryptoTransferMethod === 'binance_pay' && !config?.binancePayId)
+        return setError('L’ID Binance de réception DAE n’est pas encore configuré.');
       if (minimum && (quote.xaf < minimum || quote.xaf > maximum))
         return setError(
           `Le montant doit être compris entre ${money(minimum)} et ${money(maximum)}.`,
@@ -436,7 +452,7 @@ function Exchange({ mode }) {
       if (invalid) return invalid.reportValidity();
       if (mode === 'buy' && !config?.paymentNumbers?.[operator])
         return setError('Ce moyen de paiement n’est pas encore configuré.');
-      if (mode === 'sell' && !selectedNetwork?.address)
+      if (mode === 'sell' && cryptoTransferMethod === 'network' && !selectedNetwork?.address)
         return setError('Adresse de dépôt non configurée pour ce réseau.');
       setStep(3);
     }
@@ -455,12 +471,17 @@ function Exchange({ mode }) {
           mode,
           asset,
           amount: mode === 'buy' ? quote.amountUsdt : quote.amountCrypto,
-          network,
+          network: cryptoTransferMethod === 'binance_pay' ? 'BINANCE_PAY' : network,
+          cryptoTransferMethod,
           operator,
           phone: form.phone,
           recipientName: mode === 'sell' ? form.recipientName : undefined,
           email: form.email,
-          wallet: mode === 'buy' ? form.wallet : undefined,
+          wallet: mode === 'buy' && cryptoTransferMethod === 'network' ? form.wallet : undefined,
+          binancePayId:
+            mode === 'buy' && cryptoTransferMethod === 'binance_pay'
+              ? form.binancePayId
+              : undefined,
           proof: form.proof,
           proofImage,
         }),
@@ -526,22 +547,88 @@ function Exchange({ mode }) {
                         </button>
                       ))}
                     </div>
-                    <label className="field-label">
-                      Réseau
-                      <select required value={network} onChange={(e) => setNetwork(e.target.value)}>
-                        <option value="">Sélectionnez le réseau</option>
-                        {networkOptions.map((n) => (
-                          <option key={n.id} value={n.id}>
-                            {n.name}
-                          </option>
-                        ))}
-                      </select>
-                      {mode === 'sell' && selectedAsset.networks.length > networkOptions.length && (
-                        <small>
-                          Certains réseaux n’ont pas encore d’adresse de dépôt configurée.
-                        </small>
+                    <fieldset className="transfer-method-picker">
+                      <legend>
+                        {mode === 'buy'
+                          ? 'Comment recevoir votre crypto ?'
+                          : 'Comment envoyer votre crypto ?'}
+                      </legend>
+                      <div className="transfer-method-options">
+                        <button
+                          type="button"
+                          className={
+                            cryptoTransferMethod === 'network'
+                              ? 'transfer-method active'
+                              : 'transfer-method'
+                          }
+                          onClick={() => changeCryptoTransferMethod('network')}
+                        >
+                          <strong>Réseau blockchain</strong>
+                          <small>
+                            {mode === 'buy' ? 'Adresse de portefeuille' : 'Transfert sur un réseau'}
+                          </small>
+                        </button>
+                        <button
+                          type="button"
+                          className={
+                            cryptoTransferMethod === 'binance_pay'
+                              ? 'transfer-method active'
+                              : 'transfer-method'
+                          }
+                          disabled={mode === 'sell' && !config.binancePayId}
+                          onClick={() => changeCryptoTransferMethod('binance_pay')}
+                        >
+                          <strong>Binance Pay</strong>
+                          <small>
+                            {mode === 'buy'
+                              ? 'Recevoir sur votre Binance ID'
+                              : 'Envoyer à DAE via Binance ID'}
+                          </small>
+                        </button>
+                      </div>
+                      {cryptoTransferMethod === 'network' ? (
+                        <label className="field-label">
+                          Réseau
+                          <select
+                            required
+                            value={network}
+                            onChange={(e) => setNetwork(e.target.value)}
+                          >
+                            <option value="">Sélectionnez le réseau</option>
+                            {networkOptions.map((n) => (
+                              <option key={n.id} value={n.id}>
+                                {n.name}
+                              </option>
+                            ))}
+                          </select>
+                          {mode === 'sell' &&
+                            selectedAsset.networks.length > networkOptions.length && (
+                              <small>
+                                Certains réseaux n’ont pas encore d’adresse de dépôt configurée.
+                              </small>
+                            )}
+                        </label>
+                      ) : (
+                        <div className="payment-instructions">
+                          {mode === 'buy' ? (
+                            <small>
+                              Vous saisirez votre Binance UID à l’étape suivante. DAE effectuera le
+                              transfert manuellement après vérification du paiement.
+                            </small>
+                          ) : (
+                            <>
+                              <strong>Binance UID de réception DAE</strong>
+                              <p className="address">{config.binancePayId}</p>
+                              <small>
+                                Envoyez uniquement {asset} depuis Binance Pay. Vérifiez l’UID avant
+                                confirmation : les transferts Binance Pay sont irréversibles. DAE
+                                vérifiera manuellement la réception.
+                              </small>
+                            </>
+                          )}
+                        </div>
                       )}
-                    </label>
+                    </fieldset>
                     <label className="field-label">
                       {mode === 'buy' ? 'Montant en USDT' : `Quantité en ${asset}`}
                       <input
@@ -576,7 +663,9 @@ function Exchange({ mode }) {
                   <section id="customer-fields">
                     <h2>
                       {mode === 'buy'
-                        ? 'Votre portefeuille et le paiement'
+                        ? cryptoTransferMethod === 'binance_pay'
+                          ? 'Votre Binance UID et le paiement'
+                          : 'Votre portefeuille et le paiement'
                         : 'Vos coordonnées de réception'}
                     </h2>
                     {mode === 'buy' && (
@@ -591,7 +680,11 @@ function Exchange({ mode }) {
                     )}
                     {mode === 'sell' && (
                       <div className="payment-instructions">
-                        <strong>Adresse de dépôt · {selectedNetwork?.name}</strong>
+                        <strong>
+                          {cryptoTransferMethod === 'binance_pay'
+                            ? 'Binance UID de réception DAE'
+                            : `Adresse de dépôt · ${selectedNetwork?.name}`}
+                        </strong>
                         <p className="address">
                           {selectedNetwork?.address || 'Adresse à configurer'}
                         </p>
@@ -602,8 +695,16 @@ function Exchange({ mode }) {
                             navigator.clipboard?.writeText(selectedNetwork?.address || '')
                           }
                         >
-                          Copier l’adresse
+                          {cryptoTransferMethod === 'binance_pay'
+                            ? 'Copier l’UID Binance'
+                            : 'Copier l’adresse'}
                         </button>
+                        {cryptoTransferMethod === 'binance_pay' && (
+                          <small>
+                            Envoyez le montant exact depuis Binance Pay et joignez sa preuve de
+                            transfert.
+                          </small>
+                        )}
                       </div>
                     )}
                     <fieldset className="operator-choice">
@@ -625,7 +726,7 @@ function Exchange({ mode }) {
                         </label>
                       ))}
                     </fieldset>
-                    {mode === 'buy' && (
+                    {mode === 'buy' && cryptoTransferMethod === 'network' && (
                       <label className="field-label">
                         Adresse de réception crypto
                         <input
@@ -636,6 +737,26 @@ function Exchange({ mode }) {
                           onChange={(e) => setField('wallet', e.target.value)}
                           placeholder="Votre adresse de portefeuille"
                         />
+                      </label>
+                    )}
+                    {mode === 'buy' && cryptoTransferMethod === 'binance_pay' && (
+                      <label className="field-label">
+                        Votre Binance UID
+                        <input
+                          required
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]{4,32}"
+                          maxLength="32"
+                          value={form.binancePayId}
+                          onChange={(e) => setField('binancePayId', e.target.value.trim())}
+                          placeholder="Votre identifiant numérique Binance"
+                        />
+                        <small>
+                          Vérifiez attentivement l’UID : les transferts Binance Pay sont
+                          irréversibles. DAE effectuera l’envoi manuellement après validation du
+                          paiement.
+                        </small>
                       </label>
                     )}
                     <div className="field-row">
@@ -698,7 +819,7 @@ function Exchange({ mode }) {
                         </strong>
                       </p>
                       <p>
-                        <span>Réseau</span>
+                        <span>Mode de transfert</span>
                         <strong>{selectedNetwork?.name}</strong>
                       </p>
                       <p>
@@ -735,7 +856,7 @@ function Exchange({ mode }) {
                         checked={form.consent}
                         onChange={(e) => setField('consent', e.target.checked)}
                       />
-                      Je confirme le montant, le réseau et les coordonnées affichés.
+                      Je confirme le montant, le mode de transfert et les coordonnées affichés.
                     </label>
                     <button className="button button-primary full" disabled={busy}>
                       {busy ? 'Envoi en cours…' : 'Créer la commande et la suivre'}
@@ -891,9 +1012,15 @@ function Tracking() {
                   <strong>{money(order.amountXaf)}</strong>
                 </p>
                 <p>
-                  <span>Réseau</span>
+                  <span>Mode de transfert</span>
                   <strong>{order.networkName || order.network}</strong>
                 </p>
+                {order.cryptoTransferMethod === 'binance_pay' && (
+                  <p>
+                    <span>Binance UID destinataire</span>
+                    <strong>{order.binancePayId}</strong>
+                  </p>
+                )}
                 <p>
                   <span>Créée le</span>
                   <strong>{new Date(order.createdAt).toLocaleString('fr-FR')}</strong>
@@ -1146,6 +1273,7 @@ function Admin() {
     const payload = {
       paymentNumbers: { mtn: fd.get('paymentMtn'), airtel: fd.get('paymentAirtel') },
       paymentRecipientNames: { mtn: fd.get('recipientMtn'), airtel: fd.get('recipientAirtel') },
+      binancePayId: fd.get('binancePayId'),
       paymentInstructions: fd.get('paymentInstructions'),
       contactWhatsApp: fd.get('contactWhatsApp'),
       contactEmail: fd.get('contactEmail'),
@@ -1529,6 +1657,18 @@ function Admin() {
                     Numéro Airtel
                     <input name="paymentAirtel" defaultValue={settings.paymentNumbers?.airtel} />
                   </label>
+                  <label className="field-label">
+                    Binance UID de réception DAE
+                    <input
+                      name="binancePayId"
+                      inputMode="numeric"
+                      pattern="[0-9]{4,32}"
+                      maxLength="32"
+                      defaultValue={settings.binancePayId || ''}
+                      placeholder="UID numérique du compte Binance DAE"
+                    />
+                    <small>Utilisé pour les ventes envoyées à DAE via Binance Pay.</small>
+                  </label>
                   <label className="field-label span-2">
                     Instructions de paiement
                     <textarea
@@ -1642,9 +1782,15 @@ function Admin() {
                 </strong>
               </p>
               <p>
-                <span>Réseau</span>
+                <span>Mode de transfert</span>
                 <strong>{selected.networkName || selected.network}</strong>
               </p>
+              {selected.cryptoTransferMethod === 'binance_pay' && (
+                <p>
+                  <span>Binance UID destinataire</span>
+                  <strong>{selected.binancePayId}</strong>
+                </p>
+              )}
             </div>
             {selected.proofData?.proof && (
               <p className="proof-line">

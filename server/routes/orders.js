@@ -26,6 +26,8 @@ function publicView(o) {
     rateApplied: o.rateApplied,
     network: o.network,
     networkName: o.networkName || o.network,
+    cryptoTransferMethod: o.cryptoTransferMethod || 'network',
+    binancePayId: o.binancePayId || '',
     operator: o.operator,
     status: o.status,
     smsStatus: o.smsStatus,
@@ -60,15 +62,26 @@ router.post('/', async (req, res, next) => {
       email,
       proof,
       proofImage,
+      cryptoTransferMethod: requestedTransferMethod,
+      binancePayId,
     } = req.body || {};
     const value = Number(amount);
     const asset = assets.find((item) => item.id === assetId);
+    const cryptoTransferMethod = requestedTransferMethod || 'network';
 
     if (!['buy', 'sell'].includes(mode)) return res.status(400).json({ error: 'Mode invalide' });
     if (!asset) return res.status(400).json({ error: 'Crypto invalide' });
     if (!Number.isFinite(value) || value <= 0)
       return res.status(400).json({ error: 'Montant invalide' });
-    if (typeof network !== 'string' || network.length < 1 || network.length > 40) {
+    if (!['network', 'binance_pay'].includes(cryptoTransferMethod)) {
+      return res.status(400).json({ error: 'Mode de transfert crypto invalide' });
+    }
+    const selectedNetwork = cryptoTransferMethod === 'binance_pay' ? 'BINANCE_PAY' : network;
+    if (
+      typeof selectedNetwork !== 'string' ||
+      selectedNetwork.length < 1 ||
+      selectedNetwork.length > 40
+    ) {
       return res.status(400).json({ error: 'Réseau invalide' });
     }
     if (!['mtn', 'airtel'].includes(operator))
@@ -89,26 +102,42 @@ router.post('/', async (req, res, next) => {
     }
 
     const config = await SiteConfig.findOne({ key: 'main' }).lean();
-    const configuredNetwork = config?.receivingAddresses?.[asset.id]?.[network];
-    const defaultNetwork = asset.networks.find((item) => item.id === network);
+    const configuredNetwork = config?.receivingAddresses?.[asset.id]?.[selectedNetwork];
+    const defaultNetwork = asset.networks.find((item) => item.id === selectedNetwork);
     const depositAddress =
       typeof configuredNetwork === 'string' ? configuredNetwork : configuredNetwork?.address;
-    if (!configuredNetwork && !defaultNetwork) {
+    if (cryptoTransferMethod === 'network' && !configuredNetwork && !defaultNetwork) {
       return res.status(400).json({ error: 'Réseau non pris en charge pour cette crypto' });
     }
-    if (mode === 'sell' && !depositAddress?.trim()) {
+    if (mode === 'sell' && cryptoTransferMethod === 'network' && !depositAddress?.trim()) {
       return res.status(503).json({ error: NETWORK_NOT_CONFIGURED });
     }
     let cleanWallet;
+    let cleanBinancePayId;
     if (mode === 'buy') {
-      cleanWallet = String(wallet || '').trim();
-      const networkName =
-        typeof configuredNetwork === 'string'
-          ? network
-          : configuredNetwork?.name || defaultNetwork?.name || network;
-      const maxWalletLength = networkName.toLowerCase().includes('lightning') ? 7100 : 2000;
-      if (cleanWallet.length < 20 || cleanWallet.length > maxWalletLength) {
-        return res.status(400).json({ error: 'Adresse de portefeuille invalide' });
+      if (cryptoTransferMethod === 'binance_pay') {
+        cleanBinancePayId = String(binancePayId || '').trim();
+        if (!/^\d{4,32}$/.test(cleanBinancePayId)) {
+          return res
+            .status(400)
+            .json({ error: 'Votre ID Binance doit contenir entre 4 et 32 chiffres' });
+        }
+      } else {
+        cleanWallet = String(wallet || '').trim();
+        const networkName =
+          typeof configuredNetwork === 'string'
+            ? selectedNetwork
+            : configuredNetwork?.name || defaultNetwork?.name || selectedNetwork;
+        const maxWalletLength = networkName.toLowerCase().includes('lightning') ? 7100 : 2000;
+        if (cleanWallet.length < 20 || cleanWallet.length > maxWalletLength) {
+          return res.status(400).json({ error: 'Adresse de portefeuille invalide' });
+        }
+      }
+    }
+    if (mode === 'sell' && cryptoTransferMethod === 'binance_pay') {
+      cleanBinancePayId = String(config?.binancePayId || '').trim();
+      if (!/^\d{4,32}$/.test(cleanBinancePayId)) {
+        return res.status(503).json({ error: 'L’ID Binance de réception DAE n’est pas configuré' });
       }
     }
     if (mode === 'buy' && !config?.paymentNumbers?.[operator]) {
@@ -180,11 +209,15 @@ router.post('/', async (req, res, next) => {
       amountXaf,
       amountUsdt,
       rateApplied: unit,
-      network,
+      network: selectedNetwork,
       networkName:
-        typeof configuredNetwork === 'string'
-          ? network
-          : configuredNetwork?.name || defaultNetwork?.name || network,
+        cryptoTransferMethod === 'binance_pay'
+          ? 'Binance Pay (transfert interne)'
+          : typeof configuredNetwork === 'string'
+            ? selectedNetwork
+            : configuredNetwork?.name || defaultNetwork?.name || selectedNetwork,
+      cryptoTransferMethod,
+      binancePayId: cleanBinancePayId,
       operator,
       phone: cleanPhone,
       recipientName: cleanRecipientName || undefined,

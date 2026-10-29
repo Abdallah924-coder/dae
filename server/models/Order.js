@@ -22,6 +22,12 @@ const orderSchema = new mongoose.Schema(
     rateApplied: { type: Number, required: true },
     network: { type: String, required: true },
     networkName: { type: String, maxlength: 80 },
+    cryptoTransferMethod: {
+      type: String,
+      enum: ['network', 'binance_pay'],
+      default: 'network',
+    },
+    binancePayId: { type: String, maxlength: 32 },
     operator: { type: String, enum: ['mtn', 'airtel'], required: true },
     phone: { type: String, required: true },
     recipientName: { type: String, maxlength: 100 },
