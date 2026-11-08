@@ -1,6 +1,7 @@
 'use strict';
 
 const path = require('path');
+const fs = require('node:fs/promises');
 const crypto = require('crypto');
 const express = require('express');
 const helmet = require('helmet');
@@ -77,6 +78,11 @@ app.get('/healthz', async (req, res) => {
 
 const publicDirectory = path.join(__dirname, '..', 'public');
 let maintenanceCache = { checkedAt: 0, enabled: false, message: '' };
+const escapeHtml = (value) =>
+  String(value).replace(/[&<>"']/g, (character) => {
+    const entities = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+    return entities[character];
+  });
 app.use(async (req, res, next) => {
   if (
     req.path === '/healthz' ||
@@ -104,9 +110,19 @@ app.use(async (req, res, next) => {
         maintenance: true,
       });
     }
-    res.status(503).sendFile(path.join(publicDirectory, 'maintenance.html'), (error) => {
-      if (error) next(error);
-    });
+    const maintenanceHtml = await fs.readFile(
+      path.join(publicDirectory, 'maintenance.html'),
+      'utf8',
+    );
+    res
+      .status(503)
+      .type('html')
+      .send(
+        maintenanceHtml.replace(
+          '<!-- MAINTENANCE_MESSAGE -->',
+          escapeHtml(maintenanceCache.message),
+        ),
+      );
   } catch (error) {
     next(error);
   }

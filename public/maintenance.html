@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#102b27" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Maintenance en cours · DAE Crypto</title>
+    <link rel="icon" type="image/png" href="/images/dae-mark.png" />
+    <style>
+      :root {
+        color-scheme: light;
+        font-family:
+          Inter,
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          sans-serif;
+        color: #172722;
+        background: #f6f9f7;
+        font-synthesis: none;
+        text-rendering: optimizeLegibility;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        min-width: 320px;
+        min-height: 100vh;
+        margin: 0;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+      }
+      main {
+        width: min(100%, 680px);
+        overflow: hidden;
+        border: 1px solid #e5ece8;
+        border-radius: 20px;
+        background: white;
+        box-shadow: 0 28px 90px #17382b12;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 22px 30px;
+        border-bottom: 1px solid #edf1ef;
+      }
+      header img {
+        display: block;
+        width: 148px;
+        height: auto;
+      }
+      .status {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        border: 1px solid #e8eee9;
+        border-radius: 99px;
+        padding: 8px 11px;
+        color: #63716c;
+        font-size: 10px;
+        font-weight: 750;
+        letter-spacing: 0.08em;
+      }
+      .status i {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: #e3a43c;
+        box-shadow: 0 0 0 4px #e3a43c1c;
+      }
+      .content {
+        padding: 54px 54px 50px;
+      }
+      .icon {
+        display: grid;
+        width: 56px;
+        height: 56px;
+        place-items: center;
+        border-radius: 16px;
+        background: #eaf6f0;
+        color: #087f67;
+        font-size: 26px;
+      }
+      .eyebrow {
+        margin: 26px 0 10px;
+        color: #087f67;
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 0.16em;
+      }
+      h1 {
+        max-width: 500px;
+        margin: 0;
+        font-size: clamp(32px, 7vw, 48px);
+        line-height: 1.08;
+        letter-spacing: -0.055em;
+      }
+      .message {
+        max-width: 500px;
+        margin: 18px 0 0;
+        color: #687672;
+        font-size: 15px;
+        line-height: 1.8;
+        white-space: pre-line;
+      }
+      .divider {
+        height: 1px;
+        margin: 34px 0 20px;
+        background: #edf1ef;
+      }
+      .help {
+        display: flex;
+        justify-content: space-between;
+        gap: 20px;
+        color: #7a8782;
+        font-size: 11px;
+        line-height: 1.6;
+      }
+      .help strong {
+        color: #34443f;
+        font-weight: 650;
+      }
+      @media (max-width: 560px) {
+        body {
+          padding: 14px;
+        }
+        main {
+          border-radius: 15px;
+        }
+        header {
+          padding: 18px 20px;
+        }
+        header img {
+          width: 125px;
+        }
+        .status {
+          font-size: 8px;
+        }
+        .content {
+          padding: 38px 23px 30px;
+        }
+        .message {
+          font-size: 14px;
+        }
+        .help {
+          flex-direction: column;
+          gap: 8px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <img src="/images/dae-logo.png" alt="DAE Crypto" />
+        <span class="status"><i></i> MAINTENANCE</span>
+      </header>
+      <section class="content">
+        <div class="icon" aria-hidden="true">↻</div>
+        <p class="eyebrow">NOUS REVENONS BIENTÔT</p>
+        <h1>La plateforme fait une petite pause.</h1>
+        <p class="message"><!-- MAINTENANCE_MESSAGE --></p>
+        <div class="divider"></div>
+        <div class="help">
+          <strong>Vos opérations et vos informations restent au même endroit.</strong
+          ><span>Merci de votre patience · DAE Crypto</span>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

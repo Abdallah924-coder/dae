@@ -148,6 +148,8 @@ function Home() {
   const [markets, setMarkets] = useState([]);
   const [updated, setUpdated] = useState('');
   const [rates, setRates] = useState(null);
+  const [query, setQuery] = useState('');
+  const [marketTab, setMarketTab] = useState('Tous');
   useEffect(() => {
     let alive = true;
     const load = async () => {
@@ -167,118 +169,171 @@ function Home() {
       clearInterval(t);
     };
   }, []);
+  const visibleMarkets = (
+    markets.length
+      ? markets
+      : assetsFallback.map((a) => ({
+          asset: a.id,
+          name: a.name,
+          priceUsd: a.id === 'USDT' ? 1 : 0,
+          change24h: 0,
+        }))
+  ).filter((m) => {
+    const matchQuery = `${m.asset} ${m.name}`.toLowerCase().includes(query.trim().toLowerCase());
+    const matchTab =
+      marketTab === 'Tous' ||
+      (marketTab === 'Populaires' && ['BTC', 'ETH', 'USDT'].includes(m.asset)) ||
+      (marketTab === 'Stablecoins' && m.asset === 'USDT');
+    return matchQuery && matchTab;
+  });
   return (
     <Shell>
       <main>
         <section className="hero">
           <div className="hero-copy">
             <div className="eyebrow">
-              <i /> Plateforme d’échange au Congo
+              <i /> DAE · L’exchange pensé pour vous
             </div>
             <h1>
-              La crypto,
+              Vos cryptos,
               <br />
-              <span>en toute clarté.</span>
+              <span>en toute confiance.</span>
             </h1>
             <p>
-              Achetez ou vendez vos actifs numériques avec des taux connus à l’avance, un paiement
-              Mobile Money et le suivi de chaque étape.
+              Achetez et vendez vos actifs numériques au Congo. Des taux affichés à l’avance, des
+              paiements Mobile Money et un suivi clair à chaque étape.
             </p>
             <div className="hero-actions">
               <Link to="/acheter" className="button button-primary">
-                Acheter une crypto <b>→</b>
+                Acheter <b>↗</b>
               </Link>
               <Link to="/vendre" className="button button-outline">
-                Vendre une crypto
+                Vendre <b>↗</b>
               </Link>
             </div>
             <div className="trust-row">
-              <span>✓ Tarifs transparents</span>
-              <span>✓ Suivi de commande</span>
-              <span>✓ Assistance dédiée</span>
+              <span>
+                <b>01</b> Tarifs connus avant validation
+              </span>
+              <span>
+                <b>02</b> Suivi avec référence unique
+              </span>
             </div>
           </div>
           <div className="hero-card">
             <div className="card-top">
               <div>
-                <span className="muted-light">Change rapide</span>
-                <h2>Votre échange, simplement.</h2>
+                <span className="muted-light">TAUX DE CONVERSION · XAF</span>
+                <h2>Un prix clair. Dès le départ.</h2>
               </div>
               <span className="live-pill">
-                <i /> ACTIF
+                <i /> EN DIRECT
               </span>
             </div>
-            <div className="rate-highlight">
-              <span>Valeur de référence</span>
-              <strong>
-                {rates ? `${number(rates.buyRate ?? rates.usdtXafRate, 0)} FCFA` : '— FCFA'}
-              </strong>
-              <small>pour 1 USDT · taux indicatif</small>
+            <div className="rate-pair">
+              <div className="rate-highlight">
+                <span>Vous achetez 1 USDT</span>
+                <strong>{rates ? money(rates.buyRate ?? rates.usdtXafRate) : '— FCFA'}</strong>
+                <small>Prix de vente DAE</small>
+              </div>
+              <div className="rate-highlight">
+                <span>Vous vendez 1 USDT</span>
+                <strong>{rates ? money(rates.sellRate ?? rates.usdtXafRate) : '— FCFA'}</strong>
+                <small>Prix de rachat DAE</small>
+              </div>
             </div>
-            <div className="steps-mini">
-              <div>
-                <b>01</b>
-                <span>
-                  <strong>Choisissez un actif</strong>
-                  <small>USDT, BTC, ETH, SOL ou POL</small>
-                </span>
-              </div>
-              <div>
-                <b>02</b>
-                <span>
-                  <strong>Confirmez votre montant</strong>
-                  <small>Le total estimé est affiché immédiatement</small>
-                </span>
-              </div>
-              <div>
-                <b>03</b>
-                <span>
-                  <strong>Suivez votre transaction</strong>
-                  <small>Une référence unique à chaque commande</small>
-                </span>
-              </div>
+            <div className="hero-card-foot">
+              <span>Le taux appliqué est confirmé avant votre commande.</span>
+              <Link to="/suivi">
+                Suivre une transaction <b>→</b>
+              </Link>
             </div>
           </div>
         </section>
         <section id="marches" className="market-section">
           <div className="section-heading">
             <div>
-              <span className="eyebrow plain">MARCHÉS</span>
-              <h2>Les actifs disponibles</h2>
-              <p>Les cours du marché sont actualisés automatiquement.</p>
+              <span className="eyebrow plain">VOTRE SÉLECTION</span>
+              <h2>Explorez les marchés</h2>
+              <p>Les cours de référence sont actualisés automatiquement.</p>
             </div>
             <span className="updated">
-              {updated ? `Mis à jour à ${updated}` : 'Chargement des cours…'}
+              <i /> {updated ? `Actualisé à ${updated}` : 'Actualisation des cours…'}
             </span>
           </div>
-          <div className="market-grid">
-            {(markets.length
-              ? markets
-              : assetsFallback.map((a) => ({
-                  asset: a.id,
-                  name: a.name,
-                  priceUsd: a.id === 'USDT' ? 1 : 0,
-                  change24h: 0,
-                }))
-            ).map((m) => (
-              <article className="market-card" key={m.asset}>
-                <span className={`coin coin-${m.asset}`}>{m.asset.slice(0, 1)}</span>
-                <div>
-                  <strong>{m.asset}</strong>
-                  <small>{m.name}</small>
-                </div>
-                <b className="market-price">
-                  {m.priceUsd
-                    ? `${number(m.priceUsd, m.priceUsd < 1 ? 6 : 2)} USD`
-                    : 'Cours disponible au devis'}
-                </b>
-                <span className={(m.change24h || 0) >= 0 ? 'change positive' : 'change negative'}>
-                  {m.priceUsd
-                    ? `${(m.change24h || 0) >= 0 ? '+' : ''}${number(m.change24h, 2)}% · 24 h`
-                    : '—'}
-                </span>
-              </article>
-            ))}
+          <div className="market-toolbar">
+            <div className="market-tabs" role="tablist" aria-label="Filtrer les actifs">
+              {['Tous', 'Populaires', 'Stablecoins'].map((tab) => (
+                <button
+                  key={tab}
+                  role="tab"
+                  aria-selected={marketTab === tab}
+                  className={marketTab === tab ? 'active' : ''}
+                  onClick={() => setMarketTab(tab)}
+                >
+                  {tab}
+                </button>
+              ))}
+            </div>
+            <label className="market-search">
+              <span aria-hidden="true">⌕</span>
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Rechercher un actif"
+                aria-label="Rechercher un actif"
+              />
+            </label>
+          </div>
+          <div className="market-table-wrap">
+            <table className="market-table">
+              <thead>
+                <tr>
+                  <th>Actif</th>
+                  <th>Prix de référence</th>
+                  <th>Variation · 24 h</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleMarkets.map((m) => (
+                  <tr key={m.asset}>
+                    <td>
+                      <div className="market-asset">
+                        <span className={`coin coin-${m.asset}`}>{m.asset.slice(0, 1)}</span>
+                        <span>
+                          <strong>
+                            {m.asset}
+                            <small>{m.name}</small>
+                          </strong>
+                        </span>
+                      </div>
+                    </td>
+                    <td className="market-price">
+                      {m.priceUsd ? `$${number(m.priceUsd, m.priceUsd < 1 ? 6 : 2)}` : 'Sur devis'}
+                    </td>
+                    <td>
+                      <span
+                        className={(m.change24h || 0) >= 0 ? 'change positive' : 'change negative'}
+                      >
+                        {m.priceUsd
+                          ? `${(m.change24h || 0) >= 0 ? '+' : ''}${number(m.change24h, 2)}%`
+                          : '—'}
+                      </span>
+                    </td>
+                    <td>
+                      <div className="market-actions">
+                        <Link to={`/acheter?asset=${m.asset}`}>Acheter</Link>
+                        <Link to={`/vendre?asset=${m.asset}`}>Vendre</Link>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {!visibleMarkets.length && (
+              <p className="market-empty">Aucun actif ne correspond à votre recherche.</p>
+            )}
           </div>
         </section>
         <section className="how-section">
@@ -358,7 +413,9 @@ function Exchange({ mode }) {
   const [config, setConfig] = useState(null),
     [rates, setRates] = useState(null),
     [markets, setMarkets] = useState([]);
-  const [asset, setAsset] = useState('USDT'),
+  const [asset, setAsset] = useState(
+      () => new URLSearchParams(location.search).get('asset') || 'USDT',
+    ),
     [network, setNetwork] = useState(''),
     [cryptoTransferMethod, setCryptoTransferMethod] = useState('network'),
     [amount, setAmount] = useState('');
@@ -900,6 +957,7 @@ function Exchange({ mode }) {
   );
 }
 function Tracking() {
+  const isPendingPage = location.pathname.replace(/\/$/, '') === '/attente';
   const initialRef = new URLSearchParams(location.search).get('ref') || '';
   const [ref, setRef] = useState(initialRef);
   const [order, setOrder] = useState(null);
@@ -937,9 +995,15 @@ function Tracking() {
     <Shell>
       <main className="page-wrap narrow">
         <div className="page-intro">
-          <span className="eyebrow plain">ESPACE CLIENT</span>
-          <h1>Suivre ma commande</h1>
-          <p>Entrez la référence reçue après votre demande pour consulter son avancement.</p>
+          <span className="eyebrow plain">
+            {isPendingPage ? 'DEMANDE ENREGISTRÉE' : 'ESPACE CLIENT'}
+          </span>
+          <h1>{isPendingPage ? 'Votre opération est en route.' : 'Suivre ma commande'}</h1>
+          <p>
+            {isPendingPage
+              ? 'Retrouvez ci-dessous le statut de votre demande. Gardez votre référence pour la consulter à tout moment.'
+              : 'Entrez la référence reçue après votre demande pour consulter son avancement.'}
+          </p>
         </div>
         <section className="tracking-card">
           <form className="tracking-search" onSubmit={lookup}>
