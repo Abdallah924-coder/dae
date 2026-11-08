@@ -10,7 +10,9 @@ const router = express.Router();
 router.post('/', validate(contactSchema), async (req, res) => {
   if (!process.env.ADMIN_EMAIL?.trim()) {
     logger.error('Envoi du formulaire de contact impossible : ADMIN_EMAIL non configuré');
-    return res.status(503).json({ error: 'Le formulaire de contact est temporairement indisponible.' });
+    return res
+      .status(503)
+      .json({ error: 'Le formulaire de contact est temporairement indisponible.' });
   }
 
   try {

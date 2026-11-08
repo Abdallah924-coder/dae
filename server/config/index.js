@@ -5,14 +5,26 @@ require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 const ALLOWED_ASSETS = ['USDT', 'BTC', 'POL', 'ETH', 'SOL'];
 const ALLOWED_NETWORKS = new Set([
-  'TRC20', 'BEP20', 'ERC20', 'BITCOIN', 'LIGHTNING', 'POLYGON',
-  'ETHEREUM', 'ARBITRUM', 'OPTIMISM', 'SOLANA', 'BINANCE_PAY',
+  'TRC20',
+  'BEP20',
+  'ERC20',
+  'BITCOIN',
+  'LIGHTNING',
+  'POLYGON',
+  'ETHEREUM',
+  'ARBITRUM',
+  'OPTIMISM',
+  'SOLANA',
+  'BINANCE_PAY',
 ]);
 
 const config = {
   node: process.env.NODE_ENV || 'development',
   port: Number(process.env.PORT) || 3000,
-  publicUrl: (process.env.PUBLIC_APP_URL || process.env.RENDER_EXTERNAL_URL || '').replace(/\/+$/, ''),
+  publicUrl: (process.env.PUBLIC_APP_URL || process.env.RENDER_EXTERNAL_URL || '').replace(
+    /\/+$/,
+    '',
+  ),
   database: {
     uri: process.env.MONGODB_URI || '',
   },

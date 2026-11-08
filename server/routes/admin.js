@@ -155,7 +155,10 @@ router.patch('/orders/:ref', async (req, res, next) => {
         await orderStatusChanged(order, status);
       } catch (error) {
         notificationSent = false;
-        logger.error({ orderRef: order.ref, err: error }, 'Échec de l’e-mail de mise à jour de la commande');
+        logger.error(
+          { orderRef: order.ref, err: error },
+          'Échec de l’e-mail de mise à jour de la commande',
+        );
       }
     }
     res.json({ ref: order.ref, status: order.status, notificationSent });
@@ -227,11 +230,9 @@ router.put('/settings', async (req, res, next) => {
         networks.length < 3 ||
         networks.length > MAX_NETWORKS_PER_ASSET
       ) {
-        return res
-          .status(400)
-          .json({
-            error: `${asset.id} doit avoir entre 3 et ${MAX_NETWORKS_PER_ASSET} réseaux configurés`,
-          });
+        return res.status(400).json({
+          error: `${asset.id} doit avoir entre 3 et ${MAX_NETWORKS_PER_ASSET} réseaux configurés`,
+        });
       }
       receivingAddresses[asset.id] = {};
       const ids = new Set();

@@ -9,7 +9,11 @@ test('normalizePhoneNumber strips formatting and keeps the phone number valid', 
 });
 
 test('buildSMSRequest uses the Infobip payload structure', () => {
-  const payload = buildSMSRequest('242064729391', 'Votre transaction a bien été reçue et est actuellement en attente de traitement. Nous vous informerons dès sa validation.', '447491163443');
+  const payload = buildSMSRequest(
+    '242064729391',
+    'Votre transaction a bien été reçue et est actuellement en attente de traitement. Nous vous informerons dès sa validation.',
+    '447491163443',
+  );
   assert.deepEqual(payload.messages[0].destinations, [{ to: '242064729391' }]);
   assert.equal(payload.messages[0].sender, '447491163443');
   assert.match(payload.messages[0].content.text, /actuellement en attente de traitement/);

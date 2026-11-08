@@ -25,7 +25,8 @@ function publicView(o) {
     amountCrypto: o.amountCrypto ?? o.amountUsdt,
     unitPriceUsd: o.unitPriceUsd ?? 1,
     amountXaf: o.amountXaf,
-    amountUsdt: o.amountUsdt ?? o.amountCrypto ?? o.amountXaf / (o.rateApplied || config.rates.defaultBuy),
+    amountUsdt:
+      o.amountUsdt ?? o.amountCrypto ?? o.amountXaf / (o.rateApplied || config.rates.defaultBuy),
     rateApplied: o.rateApplied,
     network: o.network,
     networkName: o.networkName || o.network,
@@ -244,7 +245,10 @@ router.post('/', async (req, res, next) => {
     const notificationSent = clientMail.status === 'fulfilled';
     const adminNotificationSent = adminMail.status === 'fulfilled';
     if (!notificationSent) {
-      logger.warn({ orderRef: order.ref, err: clientMail.reason }, 'Échec de l’e-mail de réception client');
+      logger.warn(
+        { orderRef: order.ref, err: clientMail.reason },
+        'Échec de l’e-mail de réception client',
+      );
     }
     if (!adminNotificationSent) {
       logger.warn({ orderRef: order.ref, err: adminMail.reason }, 'Échec de la notification admin');

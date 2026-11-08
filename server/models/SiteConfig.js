@@ -18,10 +18,13 @@ const siteConfigSchema = new mongoose.Schema(
     contactEmail: { type: String, default: '' },
     maintenance: {
       enabled: { type: Boolean, default: false },
-      message: { type: String, default: 'Le site est temporairement en maintenance. Revenez bientôt.' },
+      message: {
+        type: String,
+        default: 'Le site est temporairement en maintenance. Revenez bientôt.',
+      },
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 module.exports = mongoose.model('SiteConfig', siteConfigSchema);

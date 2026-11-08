@@ -11,10 +11,10 @@ const MAX_STALE_MS = 30 * 60_000;
 const RETRY_DELAY_MS = 5 * 60_000;
 
 async function fetchCoinPaprikaPrices() {
-  const response = await fetch(
-    'https://api.coinpaprika.com/v1/tickers?quotes=USD',
-    { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(15000) }
-  );
+  const response = await fetch('https://api.coinpaprika.com/v1/tickers?quotes=USD', {
+    headers: { accept: 'application/json' },
+    signal: AbortSignal.timeout(15000),
+  });
   if (!response.ok) throw new Error(`CoinPaprika a répondu avec le statut ${response.status}`);
   const tickers = await response.json();
   if (!Array.isArray(tickers)) throw new Error('Réponse CoinPaprika invalide');
@@ -42,7 +42,7 @@ async function fetchCoinGeckoPrices() {
     {
       headers: { accept: 'application/json' },
       signal: AbortSignal.timeout(8000),
-    }
+    },
   );
   if (!response.ok) throw new Error(`CoinGecko a répondu avec le statut ${response.status}`);
   const data = await response.json();
@@ -70,7 +70,9 @@ async function fetchMarketPrices() {
       markets = await fetchCoinGeckoPrices();
       source = 'CoinGecko';
     } catch (geckoError) {
-      throw new Error(`Sources de cours indisponibles (CoinPaprika : ${paprikaError.message}; CoinGecko : ${geckoError.message})`);
+      throw new Error(
+        `Sources de cours indisponibles (CoinPaprika : ${paprikaError.message}; CoinGecko : ${geckoError.message})`,
+      );
     }
   }
 
@@ -84,12 +86,22 @@ async function fetchMarketPrices() {
 
 async function getMarketPrices({ allowStale = true } = {}) {
   if (cachedPrices && Date.now() - cachedAt < CACHE_MS) {
-    return { updatedAt: new Date(cachedAt), markets: cachedPrices, source: cachedSource, stale: false };
+    return {
+      updatedAt: new Date(cachedAt),
+      markets: cachedPrices,
+      source: cachedSource,
+      stale: false,
+    };
   }
 
   if (!pendingRequest && Date.now() < retryAfter) {
     if (allowStale && cachedPrices && Date.now() - cachedAt < MAX_STALE_MS) {
-      return { updatedAt: new Date(cachedAt), markets: cachedPrices, source: cachedSource, stale: true };
+      return {
+        updatedAt: new Date(cachedAt),
+        markets: cachedPrices,
+        source: cachedSource,
+        stale: true,
+      };
     }
     throw lastFetchError || new Error('Actualisation des cours temporairement limitée');
   }
@@ -110,7 +122,12 @@ async function getMarketPrices({ allowStale = true } = {}) {
     return await pendingRequest;
   } catch (error) {
     if (allowStale && cachedPrices && Date.now() - cachedAt < MAX_STALE_MS) {
-      return { updatedAt: new Date(cachedAt), markets: cachedPrices, source: cachedSource, stale: true };
+      return {
+        updatedAt: new Date(cachedAt),
+        markets: cachedPrices,
+        source: cachedSource,
+        stale: true,
+      };
     }
     throw error;
   }

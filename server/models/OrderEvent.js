@@ -8,7 +8,7 @@ const eventSchema = new mongoose.Schema(
     to: { type: String, required: true },
     note: { type: String },
   },
-  { timestamps: { createdAt: true, updatedAt: false } }
+  { timestamps: { createdAt: true, updatedAt: false } },
 );
 
 module.exports = mongoose.model('OrderEvent', eventSchema);

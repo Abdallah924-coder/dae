@@ -5,7 +5,12 @@ const mongoose = require('mongoose');
 // sellRate = FCFA par USDT quand le client VEND de l'USDT
 const rateSchema = new mongoose.Schema(
   {
-    asset: { type: String, enum: ['USDT', 'BTC', 'POL', 'ETH', 'SOL'], default: 'USDT', index: true },
+    asset: {
+      type: String,
+      enum: ['USDT', 'BTC', 'POL', 'ETH', 'SOL'],
+      default: 'USDT',
+      index: true,
+    },
     buyRate: { type: Number, required: true, min: 1 },
     sellRate: { type: Number, required: true, min: 1 },
     minXaf: { type: Number, required: true, min: 0 },
@@ -15,7 +20,7 @@ const rateSchema = new mongoose.Schema(
     sellMinXaf: { type: Number, min: 0 },
     sellMaxXaf: { type: Number, min: 0 },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 module.exports = mongoose.model('Rate', rateSchema);

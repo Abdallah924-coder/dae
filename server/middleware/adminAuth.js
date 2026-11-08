@@ -18,9 +18,11 @@ function sign(payload) {
 function safeEqual(input, expected) {
   const given = Buffer.from(String(input || ''));
   const configured = Buffer.from(String(expected || ''));
-  return configured.length > 0
-    && given.length === configured.length
-    && crypto.timingSafeEqual(given, configured);
+  return (
+    configured.length > 0 &&
+    given.length === configured.length &&
+    crypto.timingSafeEqual(given, configured)
+  );
 }
 
 function createSession(email) {
@@ -33,15 +35,18 @@ function isValidSession(token) {
     if (parts.length !== 2) return false;
     const [encodedPayload, signature] = parts;
     if (!encodedPayload || !signature) return false;
-    const expected = crypto.createHmac('sha256', process.env.ADMIN_SESSION_SECRET)
+    const expected = crypto
+      .createHmac('sha256', process.env.ADMIN_SESSION_SECRET)
       .update(encodedPayload)
       .digest();
     const given = Buffer.from(signature, 'base64url');
     if (given.length !== expected.length || !crypto.timingSafeEqual(given, expected)) return false;
     const payload = JSON.parse(Buffer.from(encodedPayload, 'base64url').toString());
-    return payload.email === process.env.ADMIN_EMAIL?.trim().toLowerCase()
-      && Number.isInteger(payload.exp)
-      && payload.exp > Math.floor(Date.now() / 1000);
+    return (
+      payload.email === process.env.ADMIN_EMAIL?.trim().toLowerCase() &&
+      Number.isInteger(payload.exp) &&
+      payload.exp > Math.floor(Date.now() / 1000)
+    );
   } catch {
     return false;
   }
@@ -52,10 +57,14 @@ function login(req, res, next) {
   const configuredPassword = process.env.ADMIN_PASSWORD;
   const sessionSecret = process.env.ADMIN_SESSION_SECRET;
   if (!configuredEmail || !configuredPassword || !sessionSecret || sessionSecret.length < 32) {
-    return res.status(503).json({ error: 'Les identifiants admin ne sont pas configurés correctement sur le serveur' });
+    return res
+      .status(503)
+      .json({ error: 'Les identifiants admin ne sont pas configurés correctement sur le serveur' });
   }
 
-  const email = String((req.body || {}).email || '').trim().toLowerCase();
+  const email = String((req.body || {}).email || '')
+    .trim()
+    .toLowerCase();
   const password = String((req.body || {}).password || '');
   if (email.length > 254 || password.length > 1024) {
     return res.status(401).json({ error: 'Adresse e-mail ou mot de passe incorrect' });
@@ -74,7 +83,8 @@ function login(req, res, next) {
 module.exports = (req, res, next) => {
   const authorization = req.get('authorization') || '';
   const token = authorization.startsWith('Bearer ') ? authorization.slice(7) : '';
-  if (!isValidSession(token)) return res.status(401).json({ error: 'Session expirée ou non autorisée' });
+  if (!isValidSession(token))
+    return res.status(401).json({ error: 'Session expirée ou non autorisée' });
   next();
 };
 

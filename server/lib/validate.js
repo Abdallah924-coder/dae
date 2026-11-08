@@ -15,7 +15,13 @@ const orderSchema = z.object({
   operator: z.enum(['mtn', 'airtel']),
   phone: z.string().trim().regex(PHONE_RE, 'Numéro de téléphone invalide'),
   recipientName: z.string().trim().max(100).optional(),
-  email: z.string().trim().max(160).regex(EMAIL_RE, 'Adresse e-mail invalide').optional().or(z.literal('')),
+  email: z
+    .string()
+    .trim()
+    .max(160)
+    .regex(EMAIL_RE, 'Adresse e-mail invalide')
+    .optional()
+    .or(z.literal('')),
   wallet: z.string().trim().max(7100).optional(),
   proof: z.string().trim().min(6).max(200).optional(),
   proofImage: z.string().max(1600000).optional(),
@@ -33,15 +39,23 @@ const statusSchema = z.object({
   note: z.string().max(300).optional(),
 });
 
-const rateSchema = z.object({
-  buyRate: z.number().positive(),
-  sellRate: z.number().positive(),
-  buyMinXaf: z.number().min(0),
-  buyMaxXaf: z.number().min(0),
-  sellMinXaf: z.number().min(0),
-  sellMaxXaf: z.number().min(0),
-}).refine((d) => d.buyMinXaf < d.buyMaxXaf, { message: 'buyMinXaf doit être inférieur à buyMaxXaf', path: ['buyMinXaf'] })
-  .refine((d) => d.sellMinXaf < d.sellMaxXaf, { message: 'sellMinXaf doit être inférieur à sellMaxXaf', path: ['sellMinXaf'] });
+const rateSchema = z
+  .object({
+    buyRate: z.number().positive(),
+    sellRate: z.number().positive(),
+    buyMinXaf: z.number().min(0),
+    buyMaxXaf: z.number().min(0),
+    sellMinXaf: z.number().min(0),
+    sellMaxXaf: z.number().min(0),
+  })
+  .refine((d) => d.buyMinXaf < d.buyMaxXaf, {
+    message: 'buyMinXaf doit être inférieur à buyMaxXaf',
+    path: ['buyMinXaf'],
+  })
+  .refine((d) => d.sellMinXaf < d.sellMaxXaf, {
+    message: 'sellMinXaf doit être inférieur à sellMaxXaf',
+    path: ['sellMinXaf'],
+  });
 
 const contactSchema = z.object({
   name: z.string().trim().min(1).max(100),
@@ -69,6 +83,12 @@ function validate(schema) {
 }
 
 module.exports = {
-  orderSchema, proofSchema, statusSchema, rateSchema, contactSchema, loginSchema,
-  validate, NETWORK_ID_RE,
+  orderSchema,
+  proofSchema,
+  statusSchema,
+  rateSchema,
+  contactSchema,
+  loginSchema,
+  validate,
+  NETWORK_ID_RE,
 };

@@ -1,9 +1,9 @@
 const mongoose = require('mongoose');
 
 const STATUSES = [
-  'created',          // commande créée, en attente du paiement
+  'created', // commande créée, en attente du paiement
   'payment_declared', // le client a déclaré avoir payé / envoyé
-  'processing',       // vous traitez l'opération
+  'processing', // vous traitez l'opération
   'completed',
   'cancelled',
   'expired',
@@ -35,13 +35,18 @@ const orderSchema = new mongoose.Schema(
     wallet: { type: String },
     proof: { type: String }, // ID de transaction MoMo (achat) ou hash (vente)
     proofImage: { type: String, maxlength: 1600000 },
-    smsStatus: { type: String, enum: ['pending', 'sent', 'failed'], default: 'pending', index: true },
+    smsStatus: {
+      type: String,
+      enum: ['pending', 'sent', 'failed'],
+      default: 'pending',
+      index: true,
+    },
     smsMessageId: { type: String },
     smsError: { type: String, maxlength: 500 },
     status: { type: String, enum: STATUSES, default: 'created', index: true },
     expiresAt: { type: Date, required: true },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 const Order = mongoose.model('Order', orderSchema);
