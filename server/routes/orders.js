@@ -1,3 +1,4 @@
+'use strict';
 const express = require('express');
 const crypto = require('crypto');
 const Rate = require('../models/Rate');
@@ -8,9 +9,11 @@ const assets = require('../config/cryptoAssets');
 const { getMarketPrices } = require('../services/marketData');
 const { orderSubmitted, orderReceivedByAdmin } = require('../services/email');
 const { normalizePhoneNumber, sendSMS } = require('../services/infobip');
+const { logger } = require('../lib/logger');
+const { config } = require('../config/index');
 
 const router = express.Router();
-const HOLD_MINUTES = 15;
+const HOLD_MINUTES = config.order.holdMinutes;
 const PHONE_RE = /^\+?\d{8,15}$/;
 const NETWORK_NOT_CONFIGURED = 'Ce réseau n’est pas encore configuré pour cette crypto';
 
@@ -22,7 +25,7 @@ function publicView(o) {
     amountCrypto: o.amountCrypto ?? o.amountUsdt,
     unitPriceUsd: o.unitPriceUsd ?? 1,
     amountXaf: o.amountXaf,
-    amountUsdt: o.amountUsdt ?? o.amountCrypto ?? o.amountXaf / (o.rateApplied || 640),
+    amountUsdt: o.amountUsdt ?? o.amountCrypto ?? o.amountXaf / (o.rateApplied || config.rates.defaultBuy),
     rateApplied: o.rateApplied,
     network: o.network,
     networkName: o.networkName || o.network,
@@ -241,19 +244,13 @@ router.post('/', async (req, res, next) => {
     const notificationSent = clientMail.status === 'fulfilled';
     const adminNotificationSent = adminMail.status === 'fulfilled';
     if (!notificationSent) {
-      console.error(
-        `Échec de l’e-mail de réception client pour ${order.ref}:`,
-        clientMail.reason?.message || clientMail.reason,
-      );
+      logger.warn({ orderRef: order.ref, err: clientMail.reason }, 'Échec de l’e-mail de réception client');
     }
     if (!adminNotificationSent) {
-      console.error(
-        `Échec de la notification admin pour ${order.ref} (destinataire ${process.env.ADMIN_EMAIL || 'non configuré'}):`,
-        adminMail.reason?.message || adminMail.reason,
-      );
+      logger.warn({ orderRef: order.ref, err: adminMail.reason }, 'Échec de la notification admin');
     }
 
-    const companyName = process.env.COMPANY_NAME || 'DAE Crypto';
+    const companyName = config.company;
     const smsText = `Votre transaction chez ${companyName} a bien été reçue et est actuellement en attente de traitement. Référence : ${order.ref}. Nous vous informerons dès sa validation.`;
     try {
       const smsResult = await sendSMS(normalizePhoneNumber(order.phone), smsText);
@@ -265,7 +262,7 @@ router.post('/', async (req, res, next) => {
       order.smsStatus = 'failed';
       order.smsError = error.message.slice(0, 500);
       await order.save();
-      console.error(`Échec de l’envoi SMS pour ${order.ref}:`, error.message);
+      logger.error({ orderRef: order.ref, err: error }, 'Échec de l’envoi SMS');
     }
 
     res.status(201).json({

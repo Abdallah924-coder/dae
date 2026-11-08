@@ -1,3 +1,5 @@
+'use strict';
+
 const express = require('express');
 const SiteConfig = require('../models/SiteConfig');
 const assets = require('../config/cryptoAssets');

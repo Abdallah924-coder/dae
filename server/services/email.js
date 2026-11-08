@@ -1,134 +1,45 @@
+'use strict';
+const { logger } = require('../lib/logger');
 const BREVO_URL = 'https://api.brevo.com/v3/smtp/email';
-
 function escapeHtml(value) {
-  return String(value).replace(/[&<>"']/g, (character) => ({
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#39;',
-  })[character]);
+  return String(value).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
-
 async function sendEmail({ to, subject, text, html, replyTo }) {
   const apiKey = process.env.BREVO_API_KEY?.trim();
   const senderEmail = process.env.BREVO_SENDER_EMAIL?.trim();
   const senderName = process.env.BREVO_SENDER_NAME?.trim() || 'DAE Crypto';
-  if (!apiKey || !senderEmail || !to) {
-    throw new Error('BREVO_API_KEY, BREVO_SENDER_EMAIL et une adresse destinataire doivent être configurés');
-  }
-
-  const payload = {
-    sender: { email: senderEmail, name: senderName },
-    to: [{ email: to }],
-    subject,
-    textContent: text,
-    htmlContent: html,
-  };
+  if (!apiKey || !senderEmail || !to) throw new Error('BREVO_API_KEY, BREVO_SENDER_EMAIL et une adresse destinataire doivent être configurés');
+  const payload = { sender: { email: senderEmail, name: senderName }, to: [{ email: to }], subject, textContent: text, htmlContent: html };
   if (replyTo) payload.replyTo = { email: replyTo };
-
-  const response = await fetch(BREVO_URL, {
-    method: 'POST',
-    headers: {
-      accept: 'application/json',
-      'api-key': apiKey,
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify(payload),
-    signal: AbortSignal.timeout(10000),
-  });
-  if (!response.ok) {
-    const detail = (await response.text()).slice(0, 500);
-    throw new Error(`Brevo a répondu avec le statut ${response.status}: ${detail}`);
-  }
+  const response = await fetch(BREVO_URL, { method: 'POST', headers: { accept: 'application/json', 'api-key': apiKey, 'content-type': 'application/json' }, body: JSON.stringify(payload), signal: AbortSignal.timeout(10000) });
+  if (!response.ok) { const detail = (await response.text()).slice(0, 500); throw new Error(`Brevo a répondu avec le statut ${response.status}: ${detail}`); }
 }
-
 function orderSubmitted(order) {
   const action = order.mode === 'buy' ? 'Achat' : 'Vente';
-  const transferDetails =
-    order.cryptoTransferMethod === 'binance_pay'
-      ? `Binance Pay · UID ${order.binancePayId}`
-      : `Réseau : ${order.networkName || order.network}`;
-  const text = [
-    `Bonjour,`,
-    ``,
-    `Votre demande de ${action.toLowerCase()} ${order.asset} a bien été reçue.`,
-    `Référence : ${order.ref}`,
-    `Montant : ${order.amountCrypto} ${order.asset}`,
-    `Valeur estimée : ${order.amountXaf} FCFA`,
-    transferDetails,
-    ``,
-    `Votre opération est en attente de vérification. Vous recevrez un autre e-mail lorsque son statut sera mis à jour.`,
-    `DAE Crypto`,
-  ].join('\n');
-  return sendEmail({
-    to: order.email,
-    subject: `Demande ${action.toLowerCase()} reçue — ${order.ref}`,
-    text,
-    html: `<p>Bonjour,</p><p>Votre demande de ${escapeHtml(action.toLowerCase())} <strong>${escapeHtml(order.asset)}</strong> a bien été reçue.</p><ul><li>Référence : ${escapeHtml(order.ref)}</li><li>Montant : ${escapeHtml(order.amountCrypto)} ${escapeHtml(order.asset)}</li><li>Valeur estimée : ${escapeHtml(order.amountXaf)} FCFA</li><li>${escapeHtml(transferDetails)}</li></ul><p>Votre opération est en attente de vérification. Vous recevrez un autre e-mail lorsque son statut sera mis à jour.</p><p>DAE Crypto</p>`,
-  });
+  const transferDetails = order.cryptoTransferMethod === 'binance_pay' ? `Binance Pay · UID ${order.binancePayId}` : `Réseau : ${order.networkName || order.network}`;
+  const text = `Bonjour,\n\nVotre demande de ${action.toLowerCase()} ${order.asset} a bien été reçue.\nRéférence : ${order.ref}\nMontant : ${order.amountCrypto} ${order.asset}\nValeur estimée : ${order.amountXaf} FCFA\n${transferDetails}\n\nVotre opération est en attente de vérification. Vous recevrez un autre e-mail lorsque son statut sera mis à jour.\nDAE Crypto`;
+  return sendEmail({ to: order.email, subject: `Demande ${action.toLowerCase()} reçue — ${order.ref}`, text, html: `<p>Bonjour,</p><p>Votre demande de ${escapeHtml(action.toLowerCase())} <strong>${escapeHtml(order.asset)}</strong> a bien été reçue.</p><ul><li>Référence : ${escapeHtml(order.ref)}</li><li>Montant : ${escapeHtml(order.amountCrypto)} ${escapeHtml(order.asset)}</li><li>Valeur estimée : ${escapeHtml(order.amountXaf)} FCFA</li><li>${escapeHtml(transferDetails)}</li></ul><p>Votre opération est en attente de vérification. Vous recevrez un autre e-mail lorsque son statut sera mis à jour.</p><p>DAE Crypto</p>` });
 }
-
 function orderReceivedByAdmin(order) {
   const action = order.mode === 'buy' ? 'Achat' : 'Vente';
   const publicUrl = (process.env.PUBLIC_APP_URL || process.env.RENDER_EXTERNAL_URL || 'https://dae-1lpj.onrender.com').replace(/\/+$/, '');
   const adminUrl = `${publicUrl}/admin`;
   const recipient = order.mode === 'sell' ? `\nBénéficiaire Mobile Money : ${order.recipientName}` : '';
   const wallet = order.mode === 'buy' ? `\nPortefeuille de réception : ${order.wallet}` : '';
-  const binance =
-    order.cryptoTransferMethod === 'binance_pay'
-      ? `\nBinance Pay UID destinataire : ${order.binancePayId}`
-      : '';
-  const text = [
-    `Nouvelle demande de ${action.toLowerCase()} reçue sur DAE Crypto.`,
-    `Référence : ${order.ref}`,
-    `Client : ${order.email}`,
-    `Téléphone Mobile Money : ${order.operator} · ${order.phone}${recipient}`,
-    `Montant : ${order.amountCrypto} ${order.asset}`,
-    `Valeur : ${order.amountXaf} FCFA (${order.amountUsdt} USDT)`,
-    `Réseau : ${order.networkName || order.network}`,
-    wallet,
-    binance,
-    `Preuve : ${order.proof || 'Non fournie'}`,
-    `Ouvrir l’administration : ${adminUrl}`,
-  ].filter(Boolean).join('\n');
-  return sendEmail({
-    to: process.env.ADMIN_EMAIL?.trim(),
-    subject: `Nouvelle demande ${action.toLowerCase()} — ${order.ref}`,
-    text,
-    html: `<h2>Nouvelle demande de ${escapeHtml(action.toLowerCase())}</h2><ul><li>Référence : ${escapeHtml(order.ref)}</li><li>Client : ${escapeHtml(order.email)}</li><li>Mobile Money : ${escapeHtml(order.operator)} · ${escapeHtml(order.phone)}${order.mode === 'sell' ? ` · ${escapeHtml(order.recipientName)}` : ''}</li><li>Montant : ${escapeHtml(order.amountCrypto)} ${escapeHtml(order.asset)}</li><li>Valeur : ${escapeHtml(order.amountXaf)} FCFA (${escapeHtml(order.amountUsdt)} USDT)</li><li>${escapeHtml(order.networkName || order.network)}</li>${order.mode === 'buy' && order.wallet ? `<li>Portefeuille : ${escapeHtml(order.wallet)}</li>` : ''}${order.cryptoTransferMethod === 'binance_pay' ? `<li>Binance Pay UID destinataire : ${escapeHtml(order.binancePayId || '')}</li>` : ''}<li>Preuve : ${escapeHtml(order.proof || 'Non fournie')}</li></ul><p><a href="${escapeHtml(adminUrl)}">Ouvrir l’administration</a></p>`,
-  });
+  const binance = order.cryptoTransferMethod === 'binance_pay' ? `\nBinance Pay UID destinataire : ${order.binancePayId}` : '';
+  const text = `Nouvelle demande de ${action.toLowerCase()} reçue sur DAE Crypto.\nRéférence : ${order.ref}\nClient : ${order.email}\nTéléphone Mobile Money : ${order.operator} · ${order.phone}${recipient}\nMontant : ${order.amountCrypto} ${order.asset}\nValeur : ${order.amountXaf} FCFA (${order.amountUsdt} USDT)\nRéseau : ${order.networkName || order.network}${wallet}${binance}\nPreuve : ${order.proof || 'Non fournie'}\nOuvrir l’administration : ${adminUrl}`.filter(Boolean).join('\n');
+  return sendEmail({ to: process.env.ADMIN_EMAIL?.trim(), subject: `Nouvelle demande ${action.toLowerCase()} — ${order.ref}`, text, html: `<h2>Nouvelle demande de ${escapeHtml(action.toLowerCase())}</h2><ul><li>Référence : ${escapeHtml(order.ref)}</li><li>Client : ${escapeHtml(order.email)}</li><li>Mobile Money : ${escapeHtml(order.operator)} · ${escapeHtml(order.phone)}${order.mode === 'sell' ? ` · ${escapeHtml(order.recipientName)}` : ''}</li><li>Montant : ${escapeHtml(order.amountCrypto)} ${escapeHtml(order.asset)}</li><li>Valeur : ${escapeHtml(order.amountXaf)} FCFA (${escapeHtml(order.amountUsdt)} USDT)</li><li>${escapeHtml(order.networkName || order.network)}</li>${order.mode === 'buy' && order.wallet ? `<li>Portefeuille : ${escapeHtml(order.wallet)}</li>` : ''}${order.cryptoTransferMethod === 'binance_pay' ? `<li>Binance Pay UID destinataire : ${escapeHtml(order.binancePayId || '')}</li>` : ''}<li>Preuve : ${escapeHtml(order.proof || 'Non fournie')}</li></ul><p><a href="${escapeHtml(adminUrl)}">Ouvrir l’administration</a></p>` });
 }
-
 function orderStatusChanged(order, status) {
-  const messages = {
-    processing: ['confirmée et en cours de traitement', 'Votre demande a été confirmée et notre équipe traite votre opération.'],
-    completed: ['terminée', 'Votre opération est confirmée et terminée.'],
-    cancelled: ['refusée ou annulée', 'Votre opération n’a pas été confirmée ou a été annulée. Si vous avez déjà payé ou envoyé vos cryptos, contactez notre équipe en indiquant votre référence.'],
-    failed: ['échouée', 'Nous n’avons pas pu finaliser votre opération. Contactez notre équipe en indiquant votre référence.'],
-  };
+  const messages = { processing: ['confirmée et en cours de traitement', 'Votre demande a été confirmée et notre équipe traite votre opération.'], completed: ['terminée', 'Votre opération est confirmée et terminée.'], cancelled: ['refusée ou annulée', 'Votre opération n’a pas été confirmée ou a été annulée. Si vous avez déjà payé ou envoyé vos cryptos, contactez notre équipe en indiquant votre référence.'], failed: ['échouée', 'Nous n’avons pas pu finaliser votre opération. Contactez notre équipe en indiquant votre référence.'] };
   const message = messages[status];
   if (!message) return Promise.resolve();
-
   const [subjectStatus, explanation] = message;
   const text = `Bonjour,\n\nLe statut de votre demande ${order.ref} (${order.mode === 'buy' ? 'achat' : 'vente'} ${order.asset}) a été mis à jour : ${subjectStatus}.\n\n${explanation}\n\nDAE Crypto`;
-  return sendEmail({
-    to: order.email,
-    subject: `Mise à jour de votre demande — ${order.ref}`,
-    text,
-    html: `<p>Bonjour,</p><p>Le statut de votre demande <strong>${escapeHtml(order.ref)}</strong> (${escapeHtml(order.mode === 'buy' ? 'achat' : 'vente')} ${escapeHtml(order.asset)}) a été mis à jour : <strong>${escapeHtml(subjectStatus)}</strong>.</p><p>${escapeHtml(explanation)}</p><p>DAE Crypto</p>`,
-  });
+  return sendEmail({ to: order.email, subject: `Mise à jour de votre demande — ${order.ref}`, text, html: `<p>Bonjour,</p><p>Le statut de votre demande <strong>${escapeHtml(order.ref)}</strong> (${escapeHtml(order.mode === 'buy' ? 'achat' : 'vente')} ${escapeHtml(order.asset)}) a été mis à jour : <strong>${escapeHtml(subjectStatus)}</strong>.</p><p>${escapeHtml(explanation)}</p><p>DAE Crypto</p>` });
 }
-
 function contactMessage({ name, email, message }) {
   const text = `Message reçu via le formulaire de contact DAE Crypto\n\nNom : ${name}\nE-mail : ${email}\n\nMessage :\n${message}`;
-  return sendEmail({
-    to: process.env.ADMIN_EMAIL?.trim(),
-    replyTo: email,
-    subject: `Message du site DAE Crypto — ${name}`,
-    text,
-    html: `<h2>Nouveau message du formulaire de contact</h2><p><strong>Nom :</strong> ${escapeHtml(name)}</p><p><strong>E-mail :</strong> ${escapeHtml(email)}</p><p><strong>Message :</strong></p><p>${escapeHtml(message).replace(/\n/g, '<br>')}</p>`,
-  });
+  return sendEmail({ to: process.env.ADMIN_EMAIL?.trim(), replyTo: email, subject: `Message du site DAE Crypto — ${name}`, text, html: `<h2>Nouveau message du formulaire de contact</h2><p><strong>Nom：</strong> ${escapeHtml(name)}</p><p><strong>E-mail：</strong> ${escapeHtml(email)}</p><p><strong>Message：</strong></p><p>${escapeHtml(message).replace(/\n/g, '<br>')}</p>` });
 }
-
 module.exports = { sendEmail, orderSubmitted, orderReceivedByAdmin, orderStatusChanged, contactMessage };

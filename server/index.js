@@ -1,25 +1,77 @@
-require('dotenv').config();
+'use strict';
+
 const path = require('path');
+const crypto = require('crypto');
 const express = require('express');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
-const mongoose = require('mongoose');
+const { config, validate } = require('./config/index');
+const { logger } = require('./lib/logger');
 const connectDB = require('./config/db');
 const errorHandler = require('./middleware/errorHandler');
 const SiteConfig = require('./models/SiteConfig');
 
+validate();
+
 const app = express();
 app.set('trust proxy', 1);
 
-// CSP désactivée en dev (Tailwind CDN). À configurer avant la mise en ligne.
-app.use(helmet({ contentSecurityPolicy: false }));
-app.use(express.json({ limit: '2mb' }));
-app.get('/healthz', (req, res) => {
-  if (mongoose.connection.readyState !== 1) {
-    return res.status(503).json({ status: 'unavailable', database: 'disconnected' });
-  }
-  res.json({ status: 'ok' });
+// Request ID middleware (doit être le premier)
+app.use((req, res, next) => {
+  req.id = req.get('x-request-id') || crypto.randomUUID();
+  res.set('x-request-id', req.id);
+  next();
 });
+
+// Logging middleware
+app.use((req, res, next) => {
+  const start = process.hrtime.bigint();
+  res.on('finish', () => {
+    const durationMs = Number(process.hrtime.bigint() - start) / 1e6;
+    logger.info({
+      req: { method: req.method, url: req.originalUrl, ip: req.ip },
+      res: { status: res.statusCode },
+      durationMs: Math.round(durationMs),
+    }, `${req.method} ${req.originalUrl} ${res.statusCode} ${Math.round(durationMs)}ms`);
+  });
+  next();
+});
+
+// Security headers (CSP activée en production)
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      useDefaults: true,
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", 'https://cdn.tailwindcss.com'],
+        styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+        imgSrc: ["'self'", 'data:', 'https://cdn.simpleicons.org', 'blob:'],
+        connectSrc: ["'self'"],
+        fontSrc: ['https://fonts.gstatic.com'],
+        objectSrc: ["'none'"],
+        frameSrc: ["'none'"],
+        upgradeInsecureRequests: config.node === 'production' ? [] : null,
+      },
+    },
+    hsts: config.node === 'production' ? { maxAge: 31536000, includeSubDomains: true } : false,
+  })
+);
+
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: true }));
+
+app.get('/healthz', async (req, res) => {
+  try {
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({ status: 'unavailable', database: 'disconnected' });
+    }
+    res.json({ status: 'ok' });
+  } catch (err) {
+    res.status(503).json({ status: 'unavailable' });
+  }
+});
+
 const publicDirectory = path.join(__dirname, '..', 'public');
 let maintenanceCache = { checkedAt: 0, enabled: false, message: '' };
 app.use(async (req, res, next) => {
@@ -32,13 +84,13 @@ app.use(async (req, res, next) => {
     return next();
 
   try {
-    if (Date.now() - maintenanceCache.checkedAt > 3000) {
-      const config = await SiteConfig.findOne({ key: 'main' }).select('maintenance').lean();
+    if (Date.now() - maintenanceCache.checkedAt > config.maintenance.checkMs) {
+      const cfg = await SiteConfig.findOne({ key: 'main' }).select('maintenance').lean();
       maintenanceCache = {
         checkedAt: Date.now(),
-        enabled: Boolean(config?.maintenance?.enabled),
+        enabled: Boolean(cfg?.maintenance?.enabled),
         message:
-          config?.maintenance?.message ||
+          cfg?.maintenance?.message ||
           'Le site est temporairement en maintenance. Revenez bientôt.',
       };
     }
@@ -56,6 +108,7 @@ app.use(async (req, res, next) => {
     next(error);
   }
 });
+
 const cleanPages = {
   '/': 'index.html',
   '/admin': 'index.html',
@@ -116,10 +169,16 @@ app.use('/api', (req, res) => res.status(404).json({ error: 'Route introuvable' 
 
 app.use(errorHandler);
 
-const PORT = process.env.PORT || 3000;
+const PORT = config.port;
 connectDB()
-  .then(() => app.listen(PORT, () => console.log('Serveur sur http://localhost:' + PORT)))
+  .then(() => {
+    app.listen(PORT, () => {
+      logger.info({ port: PORT, env: config.node }, `Serveur sur http://localhost:${PORT}`);
+    });
+  })
   .catch((err) => {
-    console.error('Démarrage impossible :', err.message);
+    logger.fatal({ err }, 'Démarrage impossible');
     process.exit(1);
   });
+
+module.exports = app;

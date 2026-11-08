@@ -1,3 +1,4 @@
+'use strict';
 const express = require('express');
 const adminAuth = require('../middleware/adminAuth');
 const Rate = require('../models/Rate');
@@ -6,6 +7,8 @@ const OrderEvent = require('../models/OrderEvent');
 const SiteConfig = require('../models/SiteConfig');
 const assets = require('../config/cryptoAssets');
 const { orderStatusChanged } = require('../services/email');
+const { logger } = require('../lib/logger');
+const { config } = require('../config/index');
 
 const router = express.Router();
 router.post('/auth/login', adminAuth.login);
@@ -152,10 +155,7 @@ router.patch('/orders/:ref', async (req, res, next) => {
         await orderStatusChanged(order, status);
       } catch (error) {
         notificationSent = false;
-        console.error(
-          `Échec de l’e-mail de mise à jour de la commande ${order.ref}:`,
-          error.message,
-        );
+        logger.error({ orderRef: order.ref, err: error }, 'Échec de l’e-mail de mise à jour de la commande');
       }
     }
     res.json({ ref: order.ref, status: order.status, notificationSent });

@@ -1,4 +1,7 @@
+'use strict';
+
 const crypto = require('crypto');
+const { logger } = require('../lib/logger');
 
 const SESSION_LIFETIME_SECONDS = 12 * 60 * 60;
 
@@ -58,6 +61,7 @@ function login(req, res, next) {
     return res.status(401).json({ error: 'Adresse e-mail ou mot de passe incorrect' });
   }
   if (!safeEqual(email, configuredEmail) || !safeEqual(password, configuredPassword)) {
+    logger.warn({ email }, 'Tentative de connexion admin échouée');
     return res.status(401).json({ error: 'Adresse e-mail ou mot de passe incorrect' });
   }
   try {
