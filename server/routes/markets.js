@@ -7,11 +7,9 @@ router.get('/', async (req, res, next) => {
     res.json(await getMarketPrices());
   } catch (err) {
     logger.warn({ err }, 'Sources de cours indisponibles');
-    res
-      .status(503)
-      .json({
-        error: 'Les cours sont temporairement indisponibles. Réessayez dans quelques instants.',
-      });
+    res.status(503).json({
+      error: 'Les cours sont temporairement indisponibles. Réessayez dans quelques instants.',
+    });
   }
 });
 module.exports = router;
