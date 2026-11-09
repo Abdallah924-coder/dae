@@ -2,9 +2,9 @@ const { defineConfig } = require('vite');
 const react = require('@vitejs/plugin-react');
 const path = require('node:path');
 
-module.exports = defineConfig({
+module.exports = defineConfig(({ command }) => ({
   root: path.resolve(__dirname, 'client'),
-  base: '/app/',
+  base: command === 'serve' ? '/' : '/app/',
   plugins: [react()],
   server: {
     proxy: {
@@ -16,4 +16,4 @@ module.exports = defineConfig({
     outDir: path.resolve(__dirname, 'public/app'),
     emptyOutDir: true,
   },
-});
+}));

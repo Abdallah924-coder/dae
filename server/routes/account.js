@@ -232,34 +232,21 @@ router.get('/features', async (_req, res, next) => {
   res.json({
     accounts: {
       registration: providersReady,
-      verification: authEmailReady() ? ['email'] : [],
-      status: providersReady ? 'ready' : 'configuration_required',
+      status: providersReady ? 'available' : 'unavailable',
       recovery: authChannelsReady() && mongoTransactionsReady() && auth.publicAppOriginReady(),
-      requirements: {
-        email: Boolean(process.env.BREVO_API_KEY?.trim() && process.env.BREVO_SENDER_EMAIL?.trim()),
-        sms: Boolean(process.env.INFOBIP_API_KEY?.trim() && process.env.INFOBIP_SENDER?.trim()),
-        sessionSecret: (process.env.CUSTOMER_AUTH_SECRET || '').length >= 32,
-        publicAppOrigin: auth.publicAppOriginReady(),
-        mongoTransactions: mongoTransactionsReady(),
-        legalReview: process.env.CUSTOMER_LEGAL_REVIEWED === 'true',
-      },
       policies: {
         termsUrl: publicPolicyUrl(process.env.CUSTOMER_TERMS_URL),
         privacyUrl: publicPolicyUrl(process.env.CUSTOMER_PRIVACY_URL),
       },
     },
-    identity: { status: 'manual_admin_review', enabled: true },
     custody: {
-      wallets: { enabled: bscStatus.xpub, status: bscStatus.xpub ? 'bsc_xpub_configured' : 'bsc_xpub_missing' },
       deposits: {
         enabled: Boolean(bscWallet.bscDepositsConfigReady(bscStatus) && indexerOnline && transactionsReady),
-        status: !config.bsc.depositsEnabled ? 'deposits_disabled' : !bscWallet.bscDepositsConfigReady(bscStatus) ? 'bsc_configuration_incomplete' : !transactionsReady ? 'mongo_transactions_required' : indexerOnline ? 'indexer_online' : 'indexer_offline',
       },
       withdrawals: {
         enabled: Boolean(bscWallet.bscWithdrawalsConfigReady(bscStatus) && signerOnline && transactionsReady),
-        status: !config.bsc.withdrawalsEnabled ? 'withdrawals_disabled' : !bscWallet.bscWithdrawalsConfigReady(bscStatus) ? 'bsc_configuration_incomplete' : !transactionsReady ? 'mongo_transactions_required' : signerOnline ? 'signer_online' : 'self_hosted_signer_offline',
       },
-      staking: { enabled: false, status: 'product_not_configured' },
+      staking: { enabled: false },
     },
   });
   } catch (error) {
@@ -271,8 +258,7 @@ router.post('/register', authLimiter, auth.requireSameOrigin, async (req, res, n
   try {
     if (!authProvidersReady()) {
       return res.status(503).json({
-        error:
-          'L’inscription est temporairement indisponible : la vérification par e-mail n’est pas configurée.',
+        error: 'La création de compte est temporairement indisponible. Réessayez plus tard.',
       });
     }
     const firstName = String(req.body.firstName || '').trim();
@@ -575,7 +561,7 @@ router.post('/password/forgot', recoveryLimiter, auth.requireSameOrigin, async (
   try {
     if (!authChannelsReady() || !mongoTransactionsReady()) {
       return res.status(503).json({
-        error: 'La récupération exige les canaux e-mail/SMS et une base MongoDB en replica set.',
+        error: 'La récupération du mot de passe est temporairement indisponible. Réessayez plus tard.',
       });
     }
     const email = normalizeEmail(req.body.email);
@@ -717,7 +703,7 @@ router.post('/password/reset', recoveryLimiter, auth.requireSameOrigin, async (r
       }
       if (/replica set|transaction numbers are only allowed/i.test(error.message || '')) {
         return res.status(503).json({
-          error: 'La récupération exige MongoDB en replica set pour révoquer les sessions de façon atomique.',
+          error: 'La récupération du mot de passe est temporairement indisponible. Réessayez plus tard.',
         });
       }
       return next(error);
@@ -906,7 +892,7 @@ router.post('/withdrawals', withdrawalLimiter, customerAuth, auth.requireSameOri
     const customer = req.customer;
     const bscStatus = bscWallet.bscConfigStatus();
     if (!bscWallet.bscWithdrawalsConfigReady(bscStatus) || !mongoTransactionsReady()) {
-      return res.status(503).json({ error: 'Les retraits BSC ne sont pas prêts : vérifiez la configuration réseau, le signataire et la prise en charge des transactions MongoDB.' });
+      return res.status(503).json({ error: 'Les retraits sont temporairement indisponibles. Réessayez plus tard.' });
     }
     if (customer.status !== 'active' || !customer.emailVerifiedAt || !customer.phoneVerifiedAt || customer.kycStatus !== 'approved') {
       return res.status(403).json({ error: 'Compte vérifié et KYC approuvé requis pour retirer.' });
@@ -917,7 +903,7 @@ router.post('/withdrawals', withdrawalLimiter, customerAuth, auth.requireSameOri
     }
     const heartbeat = await BscSignerHeartbeat.findOne({ name: 'local-bsc-signer', chainId: 56, masterAddress: config.bsc.masterAddress.toLowerCase(), gasAddress: config.bsc.gasAddress.toLowerCase() }).lean();
     if (!heartbeat || Date.now() - heartbeat.lastSeenAt.getTime() > 60_000) {
-      return res.status(503).json({ error: 'Le signataire local DAE est hors ligne. Réessayez plus tard.' });
+      return res.status(503).json({ error: 'Les retraits sont temporairement indisponibles. Réessayez plus tard.' });
     }
     const destination = String(req.body?.destination || '').trim();
     if (!isAddress(destination)) return res.status(400).json({ error: 'Adresse BSC de destination invalide.' });

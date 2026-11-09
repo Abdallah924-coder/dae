@@ -19,7 +19,7 @@ const { createOrderWithEvent, transitionOrder } = require('../services/orderLife
 const router = express.Router();
 const HOLD_MINUTES = config.order.holdMinutes;
 const PHONE_RE = /^\+?\d{8,15}$/;
-const NETWORK_NOT_CONFIGURED = 'Ce réseau n’est pas encore configuré pour cette crypto';
+const NETWORK_NOT_CONFIGURED = 'Les transferts sur ce réseau sont temporairement indisponibles.';
 const QUOTE_TTL_MS = 5 * 60_000;
 function optionalCustomerAuth(req, res, next) {
   const token = req.headers.cookie
@@ -124,7 +124,7 @@ async function currentOrderQuote(mode, asset, amount) {
     !Number.isSafeInteger(minXaf) || !Number.isSafeInteger(maxXaf) ||
     minXaf < 0 || maxXaf < minXaf
   ) {
-    throw quoteFailure(503, 'La configuration des taux et limites doit être corrigée');
+    throw quoteFailure(503, 'Les cotations sont temporairement indisponibles. Réessayez plus tard.');
   }
   let markets;
   try {
@@ -357,13 +357,13 @@ router.post('/', customerAuth, customerAuthService.requireSameOrigin, async (req
     if (mode === 'sell' && cryptoTransferMethod === 'binance_pay') {
       cleanBinancePayId = String(config?.binancePayId || '').trim();
       if (!/^\d{4,32}$/.test(cleanBinancePayId)) {
-        return res.status(503).json({ error: 'L’ID Binance de réception DAE n’est pas configuré' });
+        return res.status(503).json({ error: 'Binance Pay est temporairement indisponible.' });
       }
     }
     if (mode === 'buy' && !config?.paymentNumbers?.[operator]) {
       return res
         .status(503)
-        .json({ error: 'Le numéro de paiement de cet opérateur n’est pas encore configuré' });
+        .json({ error: 'Ce moyen de paiement est temporairement indisponible.' });
     }
 
     let quote;

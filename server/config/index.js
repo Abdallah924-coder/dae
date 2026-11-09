@@ -63,6 +63,7 @@ const config = {
   },
   bsc: {
     rpcUrl: process.env.BSC_RPC_URL || '',
+    logsRpcUrl: process.env.BSC_LOGS_RPC_URL || 'https://bsc-rpc.publicnode.com',
     chainId: Number(process.env.BSC_CHAIN_ID || 56),
     usdtContract: (process.env.BSC_USDT_CONTRACT || BSC_PEG_USD_CONTRACT).trim(),
     hdPublicKey: (process.env.BSC_HD_XPUB || '').trim(),

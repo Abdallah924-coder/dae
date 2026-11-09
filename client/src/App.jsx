@@ -522,7 +522,7 @@ function Home() {
         <section className="hero">
           <div className="hero-copy">
             <div className="eyebrow">
-              <i /> DAE · L’exchange pensé pour vous
+              <i /> DAE · des échanges transparents
             </div>
             <h1>
               Vos cryptos,
@@ -530,8 +530,8 @@ function Home() {
               <span>en toute confiance.</span>
             </h1>
             <p>
-              Achetez et vendez vos actifs numériques au Congo. Des taux affichés à l’avance, des
-              paiements Mobile Money et un suivi clair à chaque étape.
+              Achetez et vendez vos actifs numériques au Congo. Consultez la cotation avant de
+              créer un ordre, puis suivez son traitement par l’équipe DAE.
             </p>
             <div className="hero-actions">
               <Link to="/acheter" className="button button-primary">
@@ -735,7 +735,8 @@ function Home() {
               <span>↗</span>
               <h3>Achetez en quelques étapes</h3>
               <p>
-                Choisissez votre crypto, indiquez votre portefeuille puis payez avec MTN ou Airtel
+                Choisissez votre crypto, consultez la cotation et suivez les instructions de paiement
+                disponibles pour votre commande.
               </p>
               <Link to="/acheter">Commencer un achat →</Link>
             </article>
@@ -743,8 +744,8 @@ function Home() {
               <span>↙</span>
               <h3>Vendez en toute confiance</h3>
               <p>
-                Un réseau identifié, un montant estimé et une réception sur votre compte Mobile
-                Money.
+                Un réseau identifié, une cotation DAE et un versement traité selon les moyens
+                de paiement disponibles.
               </p>
               <Link to="/vendre">Commencer une vente →</Link>
             </article>
@@ -941,9 +942,7 @@ function Exchange({ mode }) {
     setError('');
     if (!customer) return setError('Connectez-vous avec un compte vérifié pour continuer.');
     if (rates?.orderServiceAvailable === false) {
-      return setError(
-        'Les demandes de change sont indisponibles : la base exige MongoDB en replica set ou cluster compatible.',
-      );
+      return setError('Les commandes sont temporairement indisponibles. Réessayez plus tard.');
     }
     if (step === 1) {
       if (quoteExpired) {
@@ -953,7 +952,7 @@ function Exchange({ mode }) {
       if (!quote || !quote.quoteToken || quoteLoading || (cryptoTransferMethod === 'network' && !network))
         return setError(quoteError || 'Choisissez un mode de transfert et un montant valide.');
       if (mode === 'sell' && cryptoTransferMethod === 'binance_pay' && !config?.binancePayId)
-        return setError('L’ID Binance de réception DAE n’est pas encore configuré.');
+        return setError('Ce mode de transfert est temporairement indisponible. Choisissez un réseau blockchain.');
       if (minimum && (quote.xaf < minimum || quote.xaf > maximum))
         return setError(
           `Le montant doit être compris entre ${money(minimum)} et ${money(maximum)}.`,
@@ -965,9 +964,9 @@ function Exchange({ mode }) {
       );
       if (invalid) return invalid.reportValidity();
       if (mode === 'buy' && !config?.paymentNumbers?.[operator])
-        return setError('Ce moyen de paiement n’est pas encore configuré.');
+        return setError('Ce moyen de paiement est temporairement indisponible. Choisissez une autre option.');
       if (mode === 'sell' && cryptoTransferMethod === 'network' && !selectedNetwork?.address)
-        return setError('Adresse de dépôt non configurée pour ce réseau.');
+        return setError('Les transferts sur ce réseau sont temporairement indisponibles. Choisissez une autre option.');
       setStep(3);
     }
   }
@@ -1101,9 +1100,8 @@ function Exchange({ mode }) {
             <Notice>{error}</Notice>
             {rates?.orderServiceAvailable === false && (
               <Notice>
-                Les commandes sont temporairement indisponibles. La base MongoDB doit prendre en
-                charge les transactions multi-documents pour enregistrer les changements et leur
-                historique ensemble.
+                Les commandes sont temporairement indisponibles. Réessayez plus tard ou contactez
+                l’assistance si le problème persiste.
               </Notice>
             )}
             {!ready ? (
@@ -1170,9 +1168,8 @@ function Exchange({ mode }) {
                       </div>
                       {mode === 'sell' && !config.binancePayId && (
                         <p className="transfer-unavailable" role="status">
-                          L’UID Binance Pay de DAE n’est pas encore renseigné. L’équipe doit
-                          l’ajouter dans la <Link to="/admin">configuration admin</Link> pour
-                          activer cette option.
+                          Binance Pay n’est pas disponible pour le moment. Choisissez un réseau
+                          blockchain ou contactez l’assistance.
                         </p>
                       )}
                       {cryptoTransferMethod === 'network' ? (
@@ -1193,7 +1190,8 @@ function Exchange({ mode }) {
                           {mode === 'sell' &&
                             selectedAsset.networks.length > networkOptions.length && (
                               <small>
-                                Certains réseaux n’ont pas encore d’adresse de dépôt configurée.
+                                Certains réseaux sont temporairement indisponibles. Choisissez un
+                                réseau proposé dans la liste.
                               </small>
                             )}
                         </label>
@@ -1269,7 +1267,7 @@ function Exchange({ mode }) {
                         <strong>Paiement {operator.toUpperCase()} Money</strong>
                         <p>
                           {config.paymentRecipientNames?.[operator]} ·{' '}
-                          {config.paymentNumbers?.[operator] || 'Numéro non configuré'}
+                          {config.paymentNumbers?.[operator] || 'Moyen de paiement indisponible'}
                         </p>
                         <small>{config.paymentInstructions}</small>
                       </div>
@@ -1282,7 +1280,7 @@ function Exchange({ mode }) {
                             : `Adresse de dépôt · ${selectedNetwork?.name}`}
                         </strong>
                         <p className="address">
-                          {selectedNetwork?.address || 'Adresse à configurer'}
+                          {selectedNetwork?.address || 'Réseau temporairement indisponible'}
                         </p>
                         <button
                           type="button"
@@ -1333,8 +1331,8 @@ function Exchange({ mode }) {
                       !config?.paymentNumbers?.mtn &&
                       !config?.paymentNumbers?.airtel && (
                         <p className="transfer-unavailable" role="status">
-                          Aucun numéro Mobile Money n’est configuré pour recevoir le paiement.
-                          Contactez l’assistance DAE.
+                          Le paiement Mobile Money est temporairement indisponible. Réessayez plus
+                          tard ou contactez l’assistance DAE.
                         </p>
                       )}
                     {mode === 'buy' && cryptoTransferMethod === 'network' && (
@@ -1886,7 +1884,7 @@ function AccountAccess({ initialMode = 'login' }) {
             <div className="account-gate" role="status">
               <strong>Les inscriptions ne sont pas encore activées.</strong>
               <span>
-                DAE doit terminer la configuration de la vérification par e-mail.
+                La création de compte est momentanément indisponible. Réessayez plus tard.
               </span>
             </div>
           )}
@@ -1962,7 +1960,7 @@ function AccountAccess({ initialMode = 'login' }) {
                       <Link to="/mot-de-passe-oublie">Mot de passe oublié ?</Link>
                     ) : (
                       <span>
-                        Récupération indisponible : vérification e-mail/SMS non configurée.
+                        La récupération du mot de passe est momentanément indisponible. Réessayez plus tard.
                       </span>
                     )}
                   </div>
@@ -2203,8 +2201,8 @@ function PasswordRecovery() {
             <div className="account-gate" role="status">
               <strong>Récupération indisponible.</strong>
               <span>
-                Les services de vérification e-mail/SMS doivent être configurés pour sécuriser cette
-                opération.
+                La récupération du mot de passe est momentanément indisponible. Réessayez plus tard
+                ou contactez l’assistance.
               </span>
             </div>
           )}
@@ -2617,6 +2615,7 @@ function CustomerPortal() {
   }
   const sections = [
     ['/compte', 'Aperçu', '⌂'],
+    ['/profil', 'Mon profil', '○'],
     ['/portefeuille', 'Portefeuille', '◈'],
     ['/depot', 'Dépôt', '↓'],
     ['/retrait', 'Retrait', '↑'],
@@ -2626,6 +2625,7 @@ function CustomerPortal() {
   ];
   const titles = {
     '/compte': 'Vue d’ensemble',
+    '/profil': 'Mon profil',
     '/portefeuille': 'Mon portefeuille',
     '/depot': 'Déposer des actifs',
     '/retrait': 'Retirer des actifs',
@@ -2636,6 +2636,10 @@ function CustomerPortal() {
   const usdtBalance = overview?.balances?.find(
     (balance) => balance.asset === 'USDT' && balance.network === 'BEP20',
   );
+  const bscUsdtBalance = balances.find(
+    (balance) => balance.asset === 'USDT' && balance.network === 'BEP20',
+  );
+  const bscDepositWallet = wallets.find((wallet) => wallet.network === 'BEP20');
   if (loading || !customer) {
     return <main className="customer-loading">Chargement de ton espace sécurisé…</main>;
   }
@@ -2671,10 +2675,12 @@ function CustomerPortal() {
             <strong>{titles[path] || 'Espace client'}</strong>
           </div>
           <div className="customer-user-chip">
-            <CustomerAvatar customer={customer} />
-            <b>
-              {customer.firstName} {customer.lastName}
-            </b>
+            <Link to="/profil" aria-label="Ouvrir mon profil">
+              <CustomerAvatar customer={customer} />
+              <b>
+                {customer.firstName} {customer.lastName}
+              </b>
+            </Link>
           </div>
         </header>
         <div className="customer-content">
@@ -2737,7 +2743,7 @@ function CustomerPortal() {
                 </article>
                 {overviewError && <Notice>{overviewError}</Notice>}
                 <p className="customer-dashboard-note">
-                  Les soldes affichés proviennent du ledger interne DAE; seuls les actifs crédités apparaissent ici.
+                  Seuls les actifs effectivement crédités sur votre compte apparaissent ici.
                 </p>
               </section>
               <section className="customer-market-overview">
@@ -2838,34 +2844,46 @@ function CustomerPortal() {
               </div>
               <div className="customer-feature-grid">
                 <article className="customer-feature-card">
-                  <span>WALLET HD</span>
-                  <h3>Portefeuille custodial</h3>
+                  <span>PORTEFEUILLE</span>
+                  <h3>Vos actifs chez DAE</h3>
                   <p>
-                    Les adresses seront attribuées après configuration du signataire HD isolé et
-                    validation du contrôle d’identité.
+                    Retrouvez vos soldes et les adresses de dépôt disponibles pour votre compte.
                   </p>
-                  <Link to="/portefeuille">Voir l’état du wallet →</Link>
-                  <b className="feature-lock">EN PRÉPARATION</b>
+                  <Link to="/portefeuille">Consulter mon portefeuille →</Link>
+                  <b className="feature-lock">
+                    {balancesLoading
+                      ? 'CHARGEMENT'
+                      : balancesError
+                        ? 'INDISPONIBLE'
+                        : 'CONSULTER'}
+                  </b>
                 </article>
                 <article className="customer-feature-card">
                   <span>OPÉRATIONS</span>
                   <h3>Dépôts et retraits</h3>
                   <p>
-                    Les mouvements réels sont verrouillés tant que les contrôles de conformité et la
-                    chaîne de signature ne sont pas prêts.
+                    Déposez ou retirez des USDT lorsque ces opérations sont ouvertes sur votre compte.
                   </p>
-                  <Link to="/verification">Consulter la vérification →</Link>
-                  <b className="feature-lock">INACTIFS</b>
+                  <Link to="/depot">Voir les dépôts →</Link>
+                  <b className="feature-lock">
+                    {!features
+                      ? 'CHARGEMENT'
+                      : customer.kycStatus !== 'approved'
+                        ? 'VÉRIFICATION REQUISE'
+                        : features.custody?.deposits?.enabled ||
+                            features.custody?.withdrawals?.enabled
+                          ? 'DISPONIBLES'
+                          : 'INDISPONIBLES POUR LE MOMENT'}
+                  </b>
                 </article>
                 <article className="customer-feature-card">
                   <span>RENDEMENT</span>
                   <h3>Produits de staking</h3>
                   <p>
-                    Aucun rendement n’est affiché sans protocole, durée, risques et conditions
-                    validés.
+                    Aucune offre de staking n’est disponible pour le moment.
                   </p>
                   <Link to="/staking">Voir le statut →</Link>
-                  <b className="feature-lock">INACTIF</b>
+                  <b className="feature-lock">INDISPONIBLE</b>
                 </article>
               </div>
               <section className="customer-order-history">
@@ -2928,6 +2946,106 @@ function CustomerPortal() {
               </section>
             </>
           )}
+          {path === '/profil' && (
+            <div className="customer-profile-grid">
+              <section className="customer-profile-card">
+                <div className="customer-profile-card-heading">
+                  <div>
+                    <span className="eyebrow plain">IDENTITÉ & COORDONNÉES</span>
+                    <h2>Informations du compte</h2>
+                  </div>
+                  <CustomerAvatar customer={customer} large />
+                </div>
+                <dl className="customer-profile-details">
+                  <div>
+                    <dt>Nom complet</dt>
+                    <dd>{customer.firstName} {customer.lastName}</dd>
+                  </div>
+                  <div>
+                    <dt>Adresse e-mail</dt>
+                    <dd>
+                      <span>{customer.email}</span>
+                      <span className={`profile-verification ${customer.emailVerified ? 'verified' : ''}`}>
+                        {customer.emailVerified ? 'Vérifiée' : 'À vérifier'}
+                      </span>
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Téléphone</dt>
+                    <dd>
+                      <span>{customer.phone}</span>
+                      <span className={`profile-verification ${customer.phoneVerified ? 'verified' : ''}`}>
+                        {customer.phoneVerified ? 'Vérifié' : 'À vérifier'}
+                      </span>
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Référence du compte</dt>
+                    <dd><code>{customer.id}</code></dd>
+                  </div>
+                  <div>
+                    <dt>Compte créé le</dt>
+                    <dd>
+                      {customer.createdAt
+                        ? new Date(customer.createdAt).toLocaleDateString('fr-FR', {
+                            day: 'numeric',
+                            month: 'long',
+                            year: 'numeric',
+                          })
+                        : '—'}
+                    </dd>
+                  </div>
+                </dl>
+                <p className="customer-profile-note">
+                  Les coordonnées ne sont pas modifiables depuis cet espace. Pour demander une
+                  correction, contactez l’assistance afin que votre identité puisse être revérifiée.
+                </p>
+                <Link to="/contact" className="button button-outline">
+                  Contacter l’assistance
+                </Link>
+              </section>
+              <section className="customer-profile-card customer-profile-access">
+                <span className="eyebrow plain">ÉTAT & CONTRÔLES</span>
+                <h2>Votre compte DAE</h2>
+                <div className="customer-profile-state">
+                  <span>Accès au compte</span>
+                  <strong className={`customer-status status-${customer.status}`}>
+                    {customer.status === 'active'
+                      ? 'Actif'
+                      : customer.status === 'pending_verification'
+                        ? 'Vérification requise'
+                        : customer.status === 'locked'
+                          ? 'Suspendu'
+                          : customer.status}
+                  </strong>
+                </div>
+                <div className="customer-profile-state">
+                  <span>Vérification d’identité</span>
+                  <strong className={`profile-kyc profile-kyc-${customer.kycStatus}`}>
+                    {kycStatusNames[customer.kycStatus] || 'À vérifier'}
+                  </strong>
+                </div>
+                <div className="customer-profile-links">
+                  <Link to="/verification">
+                    <span><b>Vérification d’identité</b><small>Consulter l’état de votre dossier</small></span>
+                    <span aria-hidden="true">→</span>
+                  </Link>
+                  <Link to="/securite">
+                    <span><b>Sécurité & sessions</b><small>Voir les appareils connectés</small></span>
+                    <span aria-hidden="true">→</span>
+                  </Link>
+                  <Link to="/portefeuille">
+                    <span><b>Portefeuille & soldes</b><small>Consulter les soldes de votre compte</small></span>
+                    <span aria-hidden="true">→</span>
+                  </Link>
+                  <Link to="/compte">
+                    <span><b>Activité du compte</b><small>Achats, ventes et opérations enregistrées</small></span>
+                    <span aria-hidden="true">→</span>
+                  </Link>
+                </div>
+              </section>
+            </div>
+          )}
           {path === '/portefeuille' && (
             <>
               <section className="customer-module-card">
@@ -2935,23 +3053,17 @@ function CustomerPortal() {
                 <span className="eyebrow plain">CONSERVATION SÉCURISÉE</span>
                 <h2>Votre portefeuille, conservé par DAE.</h2>
                 <p>
-                  DAE conserve les actifs et attribuera à votre compte des adresses générées depuis
-                  sa clé maîtresse HD, séparément pour chaque réseau pris en charge. Cette clé
-                  restera dans un signataire isolé, jamais sur le site ni dans la base de données.
-                  La génération des adresses est en préparation et elles resteront masquées jusqu’à
-                  la mise en service et la validation du signataire.
+                  Consultez ici les soldes enregistrés sur votre compte DAE et l’adresse de dépôt
+                  USDT sur BNB Smart Chain lorsqu’elle est disponible.
                 </p>
-                <div className="module-state">
-                  <i /> {features?.custody?.wallets?.status || 'Vérification du signataire'}
-                </div>
               </section>
               <section className="customer-wallet-list customer-ledger-balances" aria-label="Soldes du compte">
                 <div className="customer-wallet-list-heading">
                   <div>
-                    <span className="eyebrow plain">COMPTABILITÉ DU COMPTE</span>
-                    <h2>Soldes internes</h2>
+                    <span className="eyebrow plain">VOTRE COMPTE DAE</span>
+                    <h2>Soldes disponibles</h2>
                   </div>
-                  <span>Ledger DAE · lecture seule</span>
+                  <span>Montants enregistrés sur votre compte</span>
                 </div>
                 {balancesError ? (
                   <p className="customer-empty-wallets">Impossible de charger les soldes internes.</p>
@@ -2991,42 +3103,78 @@ function CustomerPortal() {
                   </>
                 ) : (
                   <p className="customer-empty-wallets">
-                    Aucune écriture de solde dans le ledger pour ce compte. Les soldes on-chain
-                    apparaîtront après l’intégration de la garde et des indexeurs.
+                    Aucun solde n’est enregistré sur votre compte pour le moment.
                   </p>
                 )}
                 <p className="customer-ledger-disclaimer">
-                  Les mouvements de fonds restent désactivés. Ces montants proviennent uniquement
-                  du ledger interne et ne constituent pas une preuve de fonds on-chain.
+                  Les montants affichés correspondent à votre compte DAE. Seules les opérations
+                  proposées dans votre espace client sont disponibles.
                 </p>
               </section>
               <section className="customer-wallet-list" aria-label="Réseaux du portefeuille">
                 <div className="customer-wallet-list-heading">
                   <div>
-                  <span className="eyebrow plain">RÉSEAU DE GARDE</span>
-                  <h2>USDT · BNB Smart Chain</h2>
+                    <span className="eyebrow plain">RÉSEAU DISPONIBLE</span>
+                    <h2>USDT · BNB Smart Chain</h2>
                   </div>
-                  <span>Solde · —</span>
+                  <span>
+                    Solde ·{' '}
+                    {balancesError
+                      ? 'indisponible'
+                      : balancesLoading
+                        ? 'chargement…'
+                        : `${formatDecimalString(bscUsdtBalance?.available || '0')} USDT`}
+                  </span>
                 </div>
-                {wallets.filter((wallet) => wallet.network === 'BEP20').map((wallet) => (
+                {wallets
+                  .filter((wallet) => wallet.network === 'BEP20')
+                  .map((wallet) => (
                   <article className="customer-wallet-row" key={wallet.network}>
-                    <span className="wallet-chain-mark">
-                      {wallet.chain.slice(0, 1).toUpperCase()}
-                    </span>
+                    <span className="wallet-chain-mark">B</span>
                     <div>
-                      <strong>{wallet.chain.toUpperCase()}</strong>
-                      <small>{wallet.network}</small>
+                      <strong>BNB Smart Chain</strong>
+                      <small>USDT · BEP20</small>
                     </div>
                     {wallet.address ? (
-                      <span className="wallet-address-value" title={wallet.address}>{wallet.address}</span>
+                      <span className="wallet-address-value" title={wallet.address}>
+                        {wallet.address}
+                      </span>
                     ) : (
-                      <span className="wallet-pending">{wallet.status === 'suspended' ? 'Portefeuille suspendu' : 'Adresse en préparation'}</span>
+                      <span className="wallet-pending">
+                        {wallet.status === 'suspended'
+                          ? 'Adresse indisponible'
+                          : customer.kycStatus !== 'approved'
+                            ? 'Vérification requise'
+                            : 'Dépôts temporairement indisponibles'}
+                      </span>
                     )}
-                    <strong>—</strong>
+                    {wallet.address && (
+                      <button
+                        type="button"
+                        className="button button-outline compact"
+                        onClick={() => navigator.clipboard?.writeText(wallet.address)}
+                      >
+                        Copier
+                      </button>
+                    )}
                   </article>
-                ))}
+                  ))}
                 {!wallets.length && (
-                  <p className="customer-empty-wallets">Aucun réseau configuré pour ce compte.</p>
+                  <p className="customer-empty-wallets">
+                    Aucune adresse de dépôt n’est disponible pour le moment.
+                  </p>
+                )}
+                {!bscDepositWallet?.address && customer.kycStatus !== 'approved' && (
+                  <p className="customer-profile-note">
+                    La vérification de votre identité est nécessaire avant de pouvoir déposer.
+                    <Link to="/verification"> Consulter mon dossier →</Link>
+                  </p>
+                )}
+                {!bscDepositWallet?.address && customer.kycStatus === 'approved' && (
+                  <p className="customer-profile-note">
+                    Les dépôts sont temporairement indisponibles. Revenez plus tard ou contactez
+                    l’assistance. N’envoyez pas de fonds à une ancienne adresse.
+                  </p>
                 )}
               </section>
             </>
@@ -3036,20 +3184,45 @@ function CustomerPortal() {
             <section className="customer-module-card">
               <div className="module-lock-icon">↓</div>
               <span className="eyebrow plain">DÉPÔT · BNB SMART CHAIN</span>
-              <h2>Déposer Binance-Peg BSC-USD (BEP20)</h2>
-              {features?.custody?.deposits?.enabled && wallets.find((wallet) => wallet.network === 'BEP20')?.address ? (
+              <h2>Déposer des USDT · BNB Smart Chain</h2>
+              {features?.custody?.deposits?.enabled && bscDepositWallet?.address ? (
                 <>
-                  <p>Cette adresse accepte uniquement le contrat Binance-Peg BSC-USD sur BNB Smart Chain. Vérifiez le réseau avant chaque envoi.</p>
+                  <p>
+                    Envoyez uniquement des USDT sur le réseau BNB Smart Chain (BEP20) à cette
+                    adresse. Les envois depuis un autre réseau peuvent être perdus.
+                  </p>
                   <div className="bsc-deposit-address">
-                    <code>{wallets.find((wallet) => wallet.network === 'BEP20').address}</code>
-                    <button className="button button-outline compact" onClick={() => navigator.clipboard?.writeText(wallets.find((wallet) => wallet.network === 'BEP20').address)}>Copier</button>
+                    <code>{bscDepositWallet.address}</code>
+                    <button
+                      type="button"
+                      className="button button-outline compact"
+                      onClick={() => navigator.clipboard?.writeText(bscDepositWallet.address)}
+                    >
+                      Copier
+                    </button>
                   </div>
-                  <div className="module-state"><i /> Indexeur BSC connecté · 15 confirmations</div>
+                  <div className="module-state"><i /> Adresse de dépôt active · USDT BEP20</div>
+                </>
+              ) : customer.kycStatus !== 'approved' ? (
+                <>
+                  <p>
+                    Validez votre vérification d’identité pour accéder aux dépôts. Aucune adresse
+                    de dépôt n’est active pour votre compte actuellement.
+                  </p>
+                  <Link className="button button-outline" to="/verification">
+                    Consulter ma vérification
+                  </Link>
                 </>
               ) : (
                 <>
-                  <p>L’adresse s’affichera après validation KYC, configuration du xpub public et connexion continue de l’indexeur BSC.</p>
-                  <div className="module-state"><i /> {features?.custody?.deposits?.status || 'Indexeur BSC hors ligne'}</div>
+                  <p>
+                    Les dépôts USDT sont temporairement indisponibles. Une adresse apparaîtra ici
+                    dès que le service pourra recevoir et suivre vos fonds en toute sécurité.
+                    N’envoyez pas de fonds à une ancienne adresse.
+                  </p>
+                  <Link className="button button-outline" to="/contact">
+                    Contacter l’assistance
+                  </Link>
                 </>
               )}
             </section>
@@ -3061,11 +3234,10 @@ function CustomerPortal() {
             <section className="customer-module-card">
               <div className="module-lock-icon">↑</div>
               <span className="eyebrow plain">RETRAIT · BNB SMART CHAIN</span>
-              <h2>Retirer Binance-Peg BSC-USD (BEP20)</h2>
+              <h2>Retirer des USDT · BNB Smart Chain</h2>
               <p>
-                Les retraits sont envoyés automatiquement depuis le portefeuille mère si le solde,
-                le compte vérifié, le KYC et le signataire local DAE sont disponibles. Les frais de
-                gaz BNB sont gérés par le portefeuille de frais DAE.
+                Les retraits sont disponibles sur le réseau BNB Smart Chain pour les comptes qui
+                ont terminé leur vérification. Vérifiez soigneusement l’adresse avant de confirmer.
               </p>
               {features?.custody?.withdrawals?.enabled ? (
                 <form className="bsc-withdrawal-form" onSubmit={submitBscWithdrawal}>
@@ -3074,7 +3246,14 @@ function CustomerPortal() {
                   <button className="button button-primary" disabled={withdrawalBusy}>{withdrawalBusy ? 'Envoi…' : 'Retirer'}</button>
                 </form>
               ) : (
-                <div className="module-state"><i /> {features?.custody?.withdrawals?.status || 'Retraits non activés'}</div>
+                customer.kycStatus !== 'approved' ? (
+                  <p>
+                    Terminez votre vérification d’identité avant de pouvoir retirer.
+                    <Link to="/verification"> Consulter ma vérification →</Link>
+                  </p>
+                ) : (
+                  <p>Les retraits sont temporairement indisponibles. Réessayez plus tard.</p>
+                )
               )}
               {withdrawalMessage && <p role="status">{withdrawalMessage}</p>}
               {withdrawalError && <Notice>{withdrawalError}</Notice>}
@@ -3093,7 +3272,7 @@ function CustomerPortal() {
                 actifs, des périodes de blocage, des frais, des récompenses et des risques.
               </p>
               <div className="module-state">
-                <i /> Produit non configuré
+                <i /> Aucune offre disponible pour le moment
               </div>
             </section>
             <CustomerFundingHistory type="staking" />
@@ -3624,9 +3803,7 @@ function Admin() {
             }
           </span>
           <div>
-            <span className="live-pill">
-              <i /> EN LIGNE
-            </span>
+            <span className="admin-session-pill">Session active</span>
             <button className="button button-outline compact" onClick={load}>
               Actualiser ↻
             </button>
@@ -4560,7 +4737,7 @@ export default function App() {
   if (path === '/connexion') return <AccountAccess initialMode="login" />;
   if (path === '/mot-de-passe-oublie') return <PasswordRecovery />;
   if (
-    ['/compte', '/portefeuille', '/depot', '/retrait', '/staking', '/verification', '/securite'].includes(path)
+    ['/compte', '/profil', '/portefeuille', '/depot', '/retrait', '/staking', '/verification', '/securite'].includes(path)
   )
     return <CustomerPortal />;
   if (path === '/acheter') return <Exchange key="buy" mode="buy" />;

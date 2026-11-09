@@ -147,6 +147,7 @@ const cleanPages = {
   '/connexion': 'index.html',
   '/mot-de-passe-oublie': 'index.html',
   '/compte': 'index.html',
+  '/profil': 'index.html',
   '/portefeuille': 'index.html',
   '/depot': 'index.html',
   '/retrait': 'index.html',

@@ -8,6 +8,7 @@ const transferInterface = new Interface([
   'event Transfer(address indexed from, address indexed to, uint256 value)',
 ]);
 let provider;
+let logsProvider;
 
 function bscConfigStatus() {
   const { bsc } = config;
@@ -53,6 +54,13 @@ function getProvider() {
   return provider;
 }
 
+function getLogsProvider() {
+  const rpcUrl = config.bsc.logsRpcUrl || config.bsc.rpcUrl;
+  if (!rpcUrl) throw new Error('BSC_LOGS_RPC_URL non configuré');
+  if (!logsProvider) logsProvider = new JsonRpcProvider(rpcUrl, config.bsc.chainId, { staticNetwork: true });
+  return logsProvider;
+}
+
 function parseTransferLog(log) {
   const parsed = transferInterface.parseLog(log);
   return {
@@ -71,6 +79,7 @@ module.exports = {
   bscWithdrawalsConfigReady,
   deriveCustomerAddress,
   getProvider,
+  getLogsProvider,
   parseTransferLog,
   TRANSFER_TOPIC,
 };
