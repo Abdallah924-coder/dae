@@ -339,7 +339,12 @@ router.get('/readiness', async (_req, res, next) => {
   res.set('Cache-Control', 'no-store');
   const bsc = bscConfigStatus();
   const signerHeartbeat = await BscSignerHeartbeat.findOne({ name: 'local-bsc-signer', chainId: 56 }).select('lastSeenAt masterAddress gasAddress').lean();
-  const signerOnline = Boolean(signerHeartbeat && Date.now() - signerHeartbeat.lastSeenAt.getTime() <= 60_000);
+  const signerOnline = Boolean(
+    signerHeartbeat &&
+    Date.now() - signerHeartbeat.lastSeenAt.getTime() <= 60_000 &&
+    signerHeartbeat.masterAddress === config.bsc.masterAddress.toLowerCase() &&
+    signerHeartbeat.gasAddress === config.bsc.gasAddress.toLowerCase()
+  );
   const indexerHeartbeat = await BscIndexerHeartbeat.findOne({ name: 'bsc-usdt-bep20' }).select('lastSeenAt indexedThrough').lean();
   const indexerOnline = Boolean(indexerHeartbeat && Date.now() - indexerHeartbeat.lastSeenAt.getTime() <= 60_000);
   res.json({
@@ -362,7 +367,10 @@ router.get('/readiness', async (_req, res, next) => {
     custody: {
       wallets: { enabled: bsc.xpub, status: bsc.xpub ? 'bsc_xpub_configured' : 'bsc_xpub_missing' },
       deposits: { enabled: Boolean(bsc.depositsEnabled && indexerOnline), status: indexerOnline ? 'indexer_online' : 'indexer_offline' },
-      withdrawals: { enabled: false, status: 'self_hosted_signer_not_integrated' },
+      withdrawals: {
+        enabled: Boolean(bsc.withdrawalsEnabled && signerOnline && mongoTransactionsReady()),
+        status: !bsc.withdrawalsEnabled ? 'withdrawals_disabled' : signerOnline ? 'signer_online' : 'self_hosted_signer_offline',
+      },
       staking: { enabled: false, status: 'product_not_configured' },
     },
     bsc: { configured: bsc.ready, ...bsc, signerOnline, indexerOnline, indexedThrough: indexerHeartbeat?.indexedThrough || null, token: 'Binance-Peg BSC-USD', decimals: 18, chainId: 56 },
@@ -372,7 +380,10 @@ router.get('/readiness', async (_req, res, next) => {
       enabled: mongoTransactionsReady(),
       status: mongoTransactionsReady() ? 'manual_order_workflow' : 'mongo_transactions_required',
     },
-    assetMovementsEnabled: false,
+    assetMovementsEnabled: Boolean(
+      (bsc.depositsEnabled && indexerOnline) ||
+      (bsc.withdrawalsEnabled && signerOnline && mongoTransactionsReady())
+    ),
   });
   } catch (error) {
     return next(error);

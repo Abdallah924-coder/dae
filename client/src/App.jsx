@@ -3676,7 +3676,9 @@ function Admin() {
                           {
                             label: 'Retraits BSC automatisés',
                             enabled: readiness.custody.withdrawals.enabled,
-                            detail: 'KYC, contrôles, approbation et signature non intégrés.',
+                            detail: readiness.custody.withdrawals.enabled
+                              ? 'Le signataire local DAE est connecté ; les retraits restent réservés aux comptes vérifiés et approuvés.'
+                              : 'Activez la variable BSC_WITHDRAWALS_ENABLED et gardez le signataire local connecté ; MongoDB doit accepter les transactions.',
                           },
                           {
                             label: 'Staking',
