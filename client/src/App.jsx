@@ -2361,6 +2361,60 @@ function CustomerFundingHistory({ type }) {
   );
 }
 
+function CustomerAvatar({ customer, large = false }) {
+  const identity = String(customer.id || customer.email || customer.firstName || 'customer');
+  const seed = Array.from(identity).reduce(
+    (value, character) => (Math.imul(value, 33) ^ character.charCodeAt(0)) >>> 0,
+    5381,
+  );
+  const hue = seed % 360;
+  const accent = (hue + 80 + ((seed >>> 8) % 100)) % 360;
+  const patterns = [
+    'M8 45C20 25 43 17 72 20M4 57C23 43 48 39 76 45',
+    'M12 12C25 30 44 46 68 60M8 31C28 20 49 20 72 30',
+    'M10 54C22 34 37 24 64 12M18 68C35 48 52 41 74 39',
+    'M8 19C28 36 45 45 72 49M10 63C29 45 45 30 67 12',
+  ];
+  const initials = `${customer.firstName?.[0] || ''}${customer.lastName?.[0] || ''}`.toUpperCase();
+  const gradientId = `avatar-gradient-${identity.replace(/[^a-z\d]/gi, '')}-${large ? 'large' : 'small'}`;
+  return (
+    <span
+      className={`customer-account-avatar${large ? ' large' : ''}`}
+      role="img"
+      aria-label={`Avatar de ${customer.firstName} ${customer.lastName}`}
+      title={`${customer.firstName} ${customer.lastName}`}
+    >
+      <svg viewBox="0 0 80 80" aria-hidden="true">
+        <defs>
+          <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor={`hsl(${hue} 58% 28%)`} />
+            <stop offset="100%" stopColor={`hsl(${accent} 56% 17%)`} />
+          </linearGradient>
+        </defs>
+        <rect width="80" height="80" rx="40" fill={`url(#${gradientId})`} />
+        <circle
+          cx={16 + ((seed >>> 4) % 48)}
+          cy={13 + ((seed >>> 12) % 48)}
+          r={13 + ((seed >>> 19) % 13)}
+          fill={`hsl(${accent} 75% 66%)`}
+          opacity=".36"
+        />
+        <path
+          d={patterns[seed % patterns.length]}
+          fill="none"
+          stroke={`hsl(${(accent + 50) % 360} 82% 77%)`}
+          strokeWidth="3"
+          opacity=".72"
+        />
+        <text x="40" y="48" textAnchor="middle" fill="white" fontSize="19" fontWeight="750">
+          {initials}
+        </text>
+        <circle cx="61" cy="61" r="5" fill={`hsl(${(hue + 145) % 360} 85% 68%)`} />
+      </svg>
+    </span>
+  );
+}
+
 function CustomerPortal() {
   const navigate = useNavigate();
   const [customer, setCustomer] = useState(null);
@@ -2369,6 +2423,8 @@ function CustomerPortal() {
   const [balances, setBalances] = useState([]);
   const [balancesLoading, setBalancesLoading] = useState(false);
   const [balancesError, setBalancesError] = useState('');
+  const [overview, setOverview] = useState(null);
+  const [overviewError, setOverviewError] = useState('');
   const [orders, setOrders] = useState([]);
   const [orderPagination, setOrderPagination] = useState({
     page: 1,
@@ -2427,6 +2483,21 @@ function CustomerPortal() {
     return () => {
       mounted = false;
       clearInterval(interval);
+    };
+  }, [path]);
+  useEffect(() => {
+    if (path !== '/compte') return undefined;
+    let active = true;
+    setOverviewError('');
+    api('/api/account/overview')
+      .then((result) => {
+        if (active) setOverview(result);
+      })
+      .catch((error) => {
+        if (active) setOverviewError(error.message);
+      });
+    return () => {
+      active = false;
     };
   }, [path]);
   useEffect(() => {
@@ -2562,6 +2633,9 @@ function CustomerPortal() {
     '/verification': 'Vérification du compte',
     '/securite': 'Sécurité du compte',
   };
+  const usdtBalance = overview?.balances?.find(
+    (balance) => balance.asset === 'USDT' && balance.network === 'BEP20',
+  );
   if (loading || !customer) {
     return <main className="customer-loading">Chargement de ton espace sécurisé…</main>;
   }
@@ -2597,10 +2671,7 @@ function CustomerPortal() {
             <strong>{titles[path] || 'Espace client'}</strong>
           </div>
           <div className="customer-user-chip">
-            <span>
-              {customer.firstName.slice(0, 1)}
-              {customer.lastName.slice(0, 1)}
-            </span>
+            <CustomerAvatar customer={customer} />
             <b>
               {customer.firstName} {customer.lastName}
             </b>
@@ -2624,7 +2695,50 @@ function CustomerPortal() {
                   <h2>Bonjour {customer.firstName},</h2>
                   <p>Voici l’état de ton compte et les services actuellement disponibles.</p>
                 </div>
-                <span className="welcome-monogram">{customer.firstName.slice(0, 1)}</span>
+                <CustomerAvatar customer={customer} large />
+              </section>
+              <section className="customer-dashboard-overview" aria-label="Résumé du compte">
+                <article className="customer-dashboard-balance">
+                  <span>Solde disponible · USDT</span>
+                  <strong>
+                    {overviewError
+                      ? '—'
+                      : overview
+                        ? formatDecimalString(usdtBalance?.available || '0')
+                        : '…'}
+                    <small> USDT</small>
+                  </strong>
+                  <div>
+                    <span>Réseau BNB Smart Chain</span>
+                    <Link to="/portefeuille">Voir le portefeuille →</Link>
+                  </div>
+                </article>
+                <article>
+                  <span>Solde réservé</span>
+                  <strong>
+                    {overviewError
+                      ? '—'
+                      : overview
+                        ? formatDecimalString(usdtBalance?.reserved || '0')
+                        : '…'}{' '}
+                    <small>USDT</small>
+                  </strong>
+                  <small>Fonds engagés dans une opération</small>
+                </article>
+                <article>
+                  <span>Opérations terminées</span>
+                  <strong>{overview ? number(overview.stats.completedOrders, 0) : '…'}</strong>
+                  <small>{overview ? `${number(overview.stats.pendingOrders, 0)} en cours` : 'Chargement…'}</small>
+                </article>
+                <article>
+                  <span>Volume traité</span>
+                  <strong>{overview ? money(overview.stats.completedVolumeXaf) : '…'}</strong>
+                  <small>{overview ? `${number(overview.stats.totalOrders, 0)} opération(s) au total` : 'Chargement…'}</small>
+                </article>
+                {overviewError && <Notice>{overviewError}</Notice>}
+                <p className="customer-dashboard-note">
+                  Les soldes affichés proviennent du ledger interne DAE; seuls les actifs crédités apparaissent ici.
+                </p>
               </section>
               <section className="customer-market-overview">
                 <div className="customer-market-heading">

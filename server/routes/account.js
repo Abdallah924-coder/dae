@@ -741,6 +741,52 @@ router.get('/me', customerAuth, (req, res) => {
   res.json({ customer: req.publicCustomer });
 });
 
+router.get('/overview', customerAuth, async (req, res, next) => {
+  try {
+    const [balances, orderRows] = await Promise.all([
+      getCustomerLedgerBalances(req.customer._id),
+      Order.aggregate([
+        { $match: { customerId: req.customer._id } },
+        {
+          $group: {
+            _id: null,
+            totalOrders: { $sum: 1 },
+            completedOrders: {
+              $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] },
+            },
+            pendingOrders: {
+              $sum: {
+                $cond: [{ $in: ['$status', ['created', 'payment_declared', 'processing']] }, 1, 0],
+              },
+            },
+            completedVolumeXaf: {
+              $sum: { $cond: [{ $eq: ['$status', 'completed'] }, '$amountXaf', 0] },
+            },
+          },
+        },
+      ]),
+    ]);
+    const stats = orderRows[0] || {
+      totalOrders: 0,
+      completedOrders: 0,
+      pendingOrders: 0,
+      completedVolumeXaf: 0,
+    };
+    res.json({
+      balances,
+      stats: {
+        totalOrders: stats.totalOrders || 0,
+        completedOrders: stats.completedOrders || 0,
+        pendingOrders: stats.pendingOrders || 0,
+        completedVolumeXaf: stats.completedVolumeXaf || 0,
+      },
+      source: 'internal_ledger',
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.get('/watchlist', customerAuth, (req, res) => {
   res.json({ assets: req.customer.watchlist || [] });
 });
