@@ -860,6 +860,10 @@ router.post('/withdrawals', withdrawalLimiter, customerAuth, auth.requireSameOri
     if (customer.status !== 'active' || !customer.emailVerifiedAt || !customer.phoneVerifiedAt || customer.kycStatus !== 'approved') {
       return res.status(403).json({ error: 'Compte vérifié et KYC approuvé requis pour retirer.' });
     }
+    const freshAuthMs = config.bsc.withdrawalFreshAuthMinutes * 60_000;
+    if (!Number.isFinite(freshAuthMs) || freshAuthMs < 60_000 || Date.now() - req.customerSession.createdAt.getTime() > freshAuthMs) {
+      return res.status(401).json({ error: 'Reconnectez-vous avec vos codes e-mail et SMS avant de demander un retrait.' });
+    }
     const heartbeat = await BscSignerHeartbeat.findOne({ name: 'local-bsc-signer', chainId: 56, masterAddress: config.bsc.masterAddress.toLowerCase(), gasAddress: config.bsc.gasAddress.toLowerCase() }).lean();
     if (!heartbeat || Date.now() - heartbeat.lastSeenAt.getTime() > 60_000) {
       return res.status(503).json({ error: 'Le signataire local DAE est hors ligne. Réessayez plus tard.' });

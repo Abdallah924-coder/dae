@@ -48,6 +48,7 @@ No address is marked active until a production signer has derived it, a chain wa
 - Staking remains unavailable until a specific protocol, custody arrangement, validator/counterparty, lock/unbonding schedule, reward source, fee policy and customer disclosures are approved.
 - Default-deny all money-moving capabilities. A UI button or a database flag alone must never activate signing, crediting, withdrawals or staking.
 - A withdrawal transfer job is created in a non-signable prepared state. The worker may queue it only after idempotently posting the customer's available-to-reserved ledger transfer; it can recover this preparation after a process restart before claiming queued jobs for signing.
+- Customer withdrawal requests require a recent customer session; customer sessions are issued only after the configured e-mail and SMS OTP checks succeed.
 - KYC approval follows an audited `not_started → pending → approved/rejected` workflow. Approval requires an internal reference to the identity file reviewed through DAE's existing process; the application stores the reference and decision reason, never the identity scan or document number.
 
 ## Required before live custody

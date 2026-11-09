@@ -77,3 +77,5 @@ services:
         value: "m/44'/60'/0'/0"
       - key: BSC_GAS_TOPUP_BNB
         value: "0.003"
+      - key: BSC_WITHDRAWAL_FRESH_AUTH_MINUTES
+        value: "10"
