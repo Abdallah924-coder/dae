@@ -7,7 +7,7 @@ DAE operates in the Republic of the Congo and is the custodian of customer asset
 ## Key boundary
 
 - The web/API process and MongoDB must never contain a seed phrase, root private key, child private key, signing share, or unencrypted key backup.
-- A separately administered signer/HSM boundary owns the root material. The web/API may request a derived public address and submit a withdrawal proposal, but it cannot sign or broadcast by itself.
+- A separately administered, DAE-controlled signer boundary owns the root material. The web/API may derive watch-only customer addresses from an xpub and submit a withdrawal proposal, but it cannot sign or broadcast by itself. The current BSC implementation is a self-hosted Node.js signer process; it is not an HSM or MPC signer.
 - Production key generation and backup ceremonies require multiple trusted operators, offline recovery copies, documented access, and a tested recovery procedure. Never generate the production root on a developer workstation or in a web request.
 - The `Wallet` model stores public address and derivation metadata only. It intentionally has no private-key or seed fields.
 - Address uniqueness is enforced only for wallets with a populated public address. Placeholder records for the same network must coexist across customer accounts; startup migrates the former sparse compound index before serving requests.
@@ -61,4 +61,6 @@ No address is marked active until a production signer has derived it, a chain wa
 
 ## Current state
 
-The existing application handles manual exchange orders. The new wallet, ledger, deposit, withdrawal and staking schemas are foundations only. The DAE custody model is specified, but its isolated signer, HD address derivation, chain monitoring and real asset movement are not integrated or enabled by this application.
+The application handles manual exchange orders and implements the BSC custody path for Binance-Peg BSC-USD (18 decimals): watch-only customer address derivation from the configured xpub, a confirmation-aware deposit indexer, double-entry ledger credits, withdrawal balance reservation, a local signer queue, confirmation tracking, and admin-triggered collections to the master wallet. Signed transactions are journaled encrypted so the local signer can resume after interruption; the mnemonic remains on the DAE-controlled signer host and is never sent to Render or MongoDB. The signer and indexer run as separate supervised processes against the application database.
+
+`BSC_DEPOSITS_ENABLED`, `BSC_WITHDRAWALS_ENABLED`, and `BSC_SWEEPS_ENABLED` default to `false`. API readiness also requires the appropriate BSC configuration, transaction-capable MongoDB, and a recent worker heartbeat; customer deposit addresses are hidden until deposit processing is ready and the customer's KYC is approved. Staking is intentionally disabled. This implementation has not thereby received an independent security audit or regulatory authorization. Before production asset movement, complete the required legal assessment, key custody and recovery procedures, access controls, transaction limits and monitoring, reconciliation, incident response, and independent security review listed above.

@@ -229,6 +229,8 @@ async function createSession(customer, req, res) {
 router.get('/features', async (_req, res, next) => {
   try {
   const providersReady = authProvidersReady();
+  const bscStatus = bscWallet.bscConfigStatus();
+  const transactionsReady = mongoTransactionsReady();
   const signer = await BscSignerHeartbeat.findOne({ name: 'local-bsc-signer', chainId: 56, masterAddress: config.bsc.masterAddress.toLowerCase(), gasAddress: config.bsc.gasAddress.toLowerCase() }).select('lastSeenAt').lean();
   const signerOnline = Boolean(signer && Date.now() - signer.lastSeenAt.getTime() <= 60_000);
   const indexer = await BscIndexerHeartbeat.findOne({ name: 'bsc-usdt-bep20' }).select('lastSeenAt').lean();
@@ -258,9 +260,15 @@ router.get('/features', async (_req, res, next) => {
     },
     identity: { status: 'manual_admin_review', enabled: true },
     custody: {
-      wallets: { enabled: bscWallet.bscConfigStatus().xpub, status: bscWallet.bscConfigStatus().xpub ? 'bsc_xpub_configured' : 'bsc_xpub_missing' },
-      deposits: { enabled: Boolean(config.bsc.depositsEnabled && indexerOnline), status: indexerOnline ? 'indexer_online' : 'indexer_offline' },
-      withdrawals: { enabled: Boolean(config.bsc.withdrawalsEnabled && signerOnline && mongoTransactionsReady()), status: signerOnline ? 'configured' : 'self_hosted_signer_offline' },
+      wallets: { enabled: bscStatus.xpub, status: bscStatus.xpub ? 'bsc_xpub_configured' : 'bsc_xpub_missing' },
+      deposits: {
+        enabled: Boolean(bscWallet.bscDepositsConfigReady(bscStatus) && indexerOnline && transactionsReady),
+        status: !config.bsc.depositsEnabled ? 'deposits_disabled' : !bscWallet.bscDepositsConfigReady(bscStatus) ? 'bsc_configuration_incomplete' : !transactionsReady ? 'mongo_transactions_required' : indexerOnline ? 'indexer_online' : 'indexer_offline',
+      },
+      withdrawals: {
+        enabled: Boolean(bscWallet.bscWithdrawalsConfigReady(bscStatus) && signerOnline && transactionsReady),
+        status: !config.bsc.withdrawalsEnabled ? 'withdrawals_disabled' : !bscWallet.bscWithdrawalsConfigReady(bscStatus) ? 'bsc_configuration_incomplete' : !transactionsReady ? 'mongo_transactions_required' : signerOnline ? 'signer_online' : 'self_hosted_signer_offline',
+      },
       staking: { enabled: false, status: 'product_not_configured' },
     },
   });
@@ -826,6 +834,8 @@ router.post('/sessions/revoke-others', customerAuth, auth.requireSameOrigin, asy
 
 router.get('/wallets', customerAuth, async (req, res, next) => {
   try {
+    const bscStatus = bscWallet.bscConfigStatus();
+    const transactionsReady = mongoTransactionsReady();
     const derivedAddress = bscWallet.deriveCustomerAddress(req.customer.walletAccountIndex);
     if (derivedAddress) {
       await Wallet.updateOne(
@@ -839,7 +849,13 @@ router.get('/wallets', customerAuth, async (req, res, next) => {
       .sort({ chain: 1, network: 1 })
       .lean();
     const indexer = await BscIndexerHeartbeat.findOne({ name: 'bsc-usdt-bep20' }).select('lastSeenAt').lean();
-    const canReceiveAddresses = Boolean(derivedAddress && config.bsc.depositsEnabled && indexer && Date.now() - indexer.lastSeenAt.getTime() <= 60_000) && req.customer.kycStatus === 'approved';
+    const canReceiveAddresses = Boolean(
+      derivedAddress &&
+      bscWallet.bscDepositsConfigReady(bscStatus) &&
+      transactionsReady &&
+      indexer && Date.now() - indexer.lastSeenAt.getTime() <= 60_000 &&
+      req.customer.kycStatus === 'approved'
+    );
     const wallets = storedWallets.map((wallet) => ({
       ...wallet,
       address: canReceiveAddresses && wallet.status === 'active' ? wallet.address : null,
@@ -856,7 +872,10 @@ router.post('/withdrawals', withdrawalLimiter, customerAuth, auth.requireSameOri
   let ledgerPosted = false;
   try {
     const customer = req.customer;
-    if (!config.bsc.withdrawalsEnabled) return res.status(503).json({ error: 'Les retraits BSC ne sont pas encore activés.' });
+    const bscStatus = bscWallet.bscConfigStatus();
+    if (!bscWallet.bscWithdrawalsConfigReady(bscStatus) || !mongoTransactionsReady()) {
+      return res.status(503).json({ error: 'Les retraits BSC ne sont pas prêts : vérifiez la configuration réseau, le signataire et la prise en charge des transactions MongoDB.' });
+    }
     if (customer.status !== 'active' || !customer.emailVerifiedAt || !customer.phoneVerifiedAt || customer.kycStatus !== 'approved') {
       return res.status(403).json({ error: 'Compte vérifié et KYC approuvé requis pour retirer.' });
     }

@@ -28,6 +28,14 @@ function bscConfigStatus() {
   return { ...statuses, ready: Object.values(statuses).every(Boolean) };
 }
 
+function bscDepositsConfigReady(status = bscConfigStatus()) {
+  return Boolean(status.rpc && status.xpub && status.chainId && status.token && status.startBlock && status.depositsEnabled);
+}
+
+function bscWithdrawalsConfigReady(status = bscConfigStatus()) {
+  return Boolean(status.rpc && status.chainId && status.token && status.master && status.gas && status.withdrawalsEnabled);
+}
+
 function deriveCustomerAddress(index) {
   const xpub = config.bsc.hdPublicKey;
   if (!bscConfigStatus().xpub) return null;
@@ -57,4 +65,12 @@ function parseTransferLog(log) {
   };
 }
 
-module.exports = { bscConfigStatus, deriveCustomerAddress, getProvider, parseTransferLog, TRANSFER_TOPIC };
+module.exports = {
+  bscConfigStatus,
+  bscDepositsConfigReady,
+  bscWithdrawalsConfigReady,
+  deriveCustomerAddress,
+  getProvider,
+  parseTransferLog,
+  TRANSFER_TOPIC,
+};

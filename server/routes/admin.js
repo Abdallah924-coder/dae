@@ -18,7 +18,7 @@ const { hashOrderReference } = require('../lib/requestLog');
 const { supportsMultiDocumentTransactions } = require('../services/mongoCapabilities');
 const customerAuthService = require('../services/customerAuth');
 const { transitionOrder } = require('../services/orderLifecycle');
-const { bscConfigStatus } = require('../services/bsc');
+const { bscConfigStatus, bscDepositsConfigReady, bscWithdrawalsConfigReady } = require('../services/bsc');
 const BscTransferJob = require('../models/BscTransferJob');
 const BscCollectionRun = require('../models/BscCollectionRun');
 const BscSignerHeartbeat = require('../models/BscSignerHeartbeat');
@@ -359,6 +359,9 @@ router.get('/readiness', async (_req, res, next) => {
   );
   const indexerHeartbeat = await BscIndexerHeartbeat.findOne({ name: 'bsc-usdt-bep20' }).select('lastSeenAt indexedThrough').lean();
   const indexerOnline = Boolean(indexerHeartbeat && Date.now() - indexerHeartbeat.lastSeenAt.getTime() <= 60_000);
+  const transactionsReady = mongoTransactionsReady();
+  const depositsReady = bscDepositsConfigReady(bsc) && indexerOnline && transactionsReady;
+  const withdrawalsReady = bscWithdrawalsConfigReady(bsc) && signerOnline && transactionsReady;
   res.json({
     accounts: {
       registration: accountRegistrationReady,
@@ -378,10 +381,13 @@ router.get('/readiness', async (_req, res, next) => {
     identity: { enabled: true, status: 'manual_admin_review' },
     custody: {
       wallets: { enabled: bsc.xpub, status: bsc.xpub ? 'bsc_xpub_configured' : 'bsc_xpub_missing' },
-      deposits: { enabled: Boolean(bsc.depositsEnabled && indexerOnline), status: indexerOnline ? 'indexer_online' : 'indexer_offline' },
+      deposits: {
+        enabled: depositsReady,
+        status: !bsc.depositsEnabled ? 'deposits_disabled' : !bscDepositsConfigReady(bsc) ? 'bsc_configuration_incomplete' : !transactionsReady ? 'mongo_transactions_required' : indexerOnline ? 'indexer_online' : 'indexer_offline',
+      },
       withdrawals: {
-        enabled: Boolean(bsc.withdrawalsEnabled && signerOnline && mongoTransactionsReady()),
-        status: !bsc.withdrawalsEnabled ? 'withdrawals_disabled' : signerOnline ? 'signer_online' : 'self_hosted_signer_offline',
+        enabled: withdrawalsReady,
+        status: !bsc.withdrawalsEnabled ? 'withdrawals_disabled' : !bscWithdrawalsConfigReady(bsc) ? 'bsc_configuration_incomplete' : !transactionsReady ? 'mongo_transactions_required' : signerOnline ? 'signer_online' : 'self_hosted_signer_offline',
       },
       staking: { enabled: false, status: 'product_not_configured' },
     },
@@ -392,10 +398,7 @@ router.get('/readiness', async (_req, res, next) => {
       enabled: mongoTransactionsReady(),
       status: mongoTransactionsReady() ? 'manual_order_workflow' : 'mongo_transactions_required',
     },
-    assetMovementsEnabled: Boolean(
-      (bsc.depositsEnabled && indexerOnline) ||
-      (bsc.withdrawalsEnabled && signerOnline && mongoTransactionsReady())
-    ),
+    assetMovementsEnabled: Boolean(depositsReady || withdrawalsReady),
   });
   } catch (error) {
     return next(error);
