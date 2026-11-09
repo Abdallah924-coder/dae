@@ -461,7 +461,7 @@ router.get('/custody/bsc/balances', async (_req, res, next) => {
       provider.getBalance(getAddress(config.bsc.masterAddress)),
       provider.getBalance(getAddress(config.bsc.gasAddress)),
       token.balanceOf(getAddress(config.bsc.masterAddress)),
-      BscTransferJob.countDocuments({ kind: 'sweep', status: { $in: ['queued', 'processing', 'broadcast'] } }),
+      BscTransferJob.countDocuments({ kind: 'sweep', status: { $in: ['queued', 'processing', 'signed', 'broadcast', 'failing'] } }),
       BscCollectionRun.findOne().sort({ createdAt: -1 }).select('status walletCount createdAt actor reason').lean(),
     ]);
     return res.json({

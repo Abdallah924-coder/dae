@@ -3,7 +3,7 @@
 const mongoose = require('mongoose');
 const path = require('node:path');
 require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env.signer') });
-const { Contract, HDNodeWallet, parseEther, getAddress } = require('ethers');
+const { Contract, HDNodeWallet, parseEther, getAddress, keccak256, Transaction } = require('ethers');
 const connectDB = require('../config/db');
 const { config, BSC_PEG_USD_CONTRACT } = require('../config');
 const { logger } = require('../lib/logger');
@@ -16,6 +16,7 @@ const BscSignerHeartbeat = require('../models/BscSignerHeartbeat');
 const { getProvider } = require('../services/bsc');
 const { postLedgerTransaction } = require('../services/ledger');
 const { reserveBscWithdrawal } = require('../services/bscWithdrawal');
+const { encryptSignedTransaction, decryptSignedTransaction } = require('../services/bscSigningJournal');
 
 const TOKEN_ABI = [
   'function decimals() view returns (uint8)',
@@ -69,12 +70,121 @@ async function failWithdrawal(job, message) {
   await Withdrawal.updateOne({ _id: withdrawal._id, status: { $nin: ['completed', 'failed'] } }, { $set: { status: 'failed', reviewNote: String(message).slice(0, 500) } });
 }
 
+async function finalizeFailedJob(job) {
+  if (job.kind === 'withdrawal') {
+    await failWithdrawal(job, job.errorCode || 'SIGNER_ERROR');
+  }
+  await BscTransferJob.updateOne({ _id: job._id, status: 'failing' }, {
+    $set: { status: 'failed', processedAt: new Date() },
+  });
+  await updateCollectionStatus(job.collectionRunId);
+}
+
 async function updateCollectionStatus(collectionRunId) {
   if (!collectionRunId) return;
   const pending = await BscTransferJob.countDocuments({ collectionRunId, status: { $nin: ['completed', 'failed'] } });
   if (pending) return;
   const failed = await BscTransferJob.countDocuments({ collectionRunId, status: 'failed' });
   await BscCollectionRun.updateOne({ _id: collectionRunId }, { $set: { status: failed ? 'partial' : 'completed' } });
+}
+
+async function validateSignedTransaction(job, rawTransaction, signers, token) {
+  const parsed = Transaction.from(rawTransaction);
+  if (!parsed.from || parsed.chainId !== 56n || parsed.nonce !== job.signingNonce) {
+    throw new Error('La transaction signée ne correspond pas au réseau ou au nonce journalisé.');
+  }
+  if (parsed.from.toLowerCase() !== job.signingAddress || keccak256(rawTransaction).toLowerCase() !== job.txHash.toLowerCase()) {
+    throw new Error('La signature ou le hash ne correspond pas au journal local.');
+  }
+  if (job.signedPurpose === 'gas_topup') {
+    const expectedGasAddress = signers.gas.address.toLowerCase();
+    let expectedRecipient = config.bsc.masterAddress.toLowerCase();
+    if (job.kind === 'sweep') {
+      const wallet = await WalletModel.findById(job.walletId).select('address').lean();
+      if (!wallet) throw new Error('Adresse du portefeuille de collecte introuvable.');
+      expectedRecipient = wallet.address.toLowerCase();
+    }
+    if (
+      parsed.from.toLowerCase() !== expectedGasAddress ||
+      parsed.to?.toLowerCase() !== expectedRecipient ||
+      parsed.data !== '0x' ||
+      parsed.value.toString() !== job.signedValueAtomic
+    ) throw new Error('La transaction de financement gaz ne correspond pas au transfert attendu.');
+    return parsed;
+  }
+  if (job.signedPurpose !== 'token_transfer' || parsed.from.toLowerCase() !== job.signingAddress) {
+    throw new Error('Type de transaction signée invalide.');
+  }
+  const expectedSender = job.kind === 'withdrawal'
+    ? config.bsc.masterAddress.toLowerCase()
+    : (await WalletModel.findById(job.walletId).select('address').lean())?.address?.toLowerCase();
+  if (!expectedSender || parsed.from.toLowerCase() !== expectedSender || parsed.to?.toLowerCase() !== config.bsc.usdtContract.toLowerCase()) {
+    throw new Error('Expéditeur ou contrat de jeton inattendu dans la transaction signée.');
+  }
+  const decoded = token.interface.parseTransaction({ data: parsed.data, value: parsed.value });
+  if (
+    decoded?.name !== 'transfer' ||
+    String(decoded.args.to).toLowerCase() !== job.destination.toLowerCase() ||
+    decoded.args.value.toString() !== job.signedTokenAmountAtomic
+  ) throw new Error('Destination ou montant signé différent de l’ordre en file.');
+  return parsed;
+}
+
+async function broadcastSignedTransaction(job, signers, provider, token) {
+  const raw = decryptSignedTransaction(job.signedRawTransaction);
+  const parsed = await validateSignedTransaction(job, raw, signers, token);
+  const knownReceipt = await provider.getTransactionReceipt(job.txHash);
+  const knownTransaction = knownReceipt || await provider.getTransaction(job.txHash);
+  if (!knownTransaction) {
+    try {
+      await provider.broadcastTransaction(raw);
+    } catch (error) {
+      const transactionAfterError = await provider.getTransaction(job.txHash).catch(() => null);
+      if (!transactionAfterError && !/already known|known transaction/i.test(String(error.message || ''))) throw error;
+    }
+  }
+  await BscTransferJob.updateOne({ _id: job._id, status: 'signed', txHash: job.txHash }, {
+    $set: { status: 'broadcast', signingAddress: parsed.from.toLowerCase() },
+    $unset: { signedRawTransaction: 1 },
+    $inc: { attempts: 1 },
+  });
+  if (job.kind === 'withdrawal' && job.signedPurpose === 'token_transfer') {
+    await Withdrawal.updateOne({ _id: job.withdrawalId, status: { $in: ['queued', 'broadcast'] } }, { $set: { status: 'broadcast', txHash: job.txHash } });
+  }
+}
+
+async function signAndJournalTransaction(job, signer, signers, provider, token, request, purpose, tokenAmountAtomic = null) {
+  const nonce = await provider.getTransactionCount(signer.address, 'pending');
+  const populated = await signer.populateTransaction({ ...request, nonce });
+  const raw = await signer.signTransaction(populated);
+  const signed = Transaction.from(raw);
+  const txHash = keccak256(raw);
+  const journalEntry = {
+    ...job.toObject(),
+    txHash,
+    signedPurpose: purpose,
+    signingAddress: signer.address.toLowerCase(),
+    signingNonce: nonce,
+    signedValueAtomic: signed.value.toString(),
+    signedTokenAmountAtomic: tokenAmountAtomic,
+  };
+  await validateSignedTransaction(journalEntry, raw, signers, token);
+  const encryptedRaw = encryptSignedTransaction(raw);
+  const result = await BscTransferJob.updateOne({ _id: job._id, status: 'processing' }, {
+    $set: {
+      status: 'signed',
+      txHash,
+      signedPurpose: purpose,
+      signingAddress: signer.address.toLowerCase(),
+      signingNonce: nonce,
+      signedValueAtomic: signed.value.toString(),
+      signedTokenAmountAtomic: tokenAmountAtomic,
+      signedRawTransaction: encryptedRaw,
+    },
+  });
+  if (result.modifiedCount !== 1) throw new Error('Le job de transfert a changé avant l’enregistrement de la signature.');
+  const signedJob = await BscTransferJob.findById(job._id).select('+signedRawTransaction');
+  await broadcastSignedTransaction(signedJob, { gas: signers.gas, master: signers.master }, provider, token);
 }
 
 async function finalizePreparedWithdrawal(job) {
@@ -101,18 +211,29 @@ async function finalizePreparedWithdrawal(job) {
 }
 
 async function processJob(job, signers, provider, token) {
+  if (job.status === 'signed' && job.signedRawTransaction) {
+    await broadcastSignedTransaction(job, signers, provider, token);
+    return;
+  }
   if (job.status === 'broadcast' && job.txHash) {
     const receipt = await provider.getTransactionReceipt(job.txHash);
     if (!receipt) return;
     if (receipt.status !== 1) {
-      await BscTransferJob.updateOne({ _id: job._id }, { $set: { status: 'failed', errorCode: 'CHAIN_REVERTED', processedAt: new Date() } });
-      await failWithdrawal(job, 'Transaction BSC échouée on-chain.');
-      await updateCollectionStatus(job.collectionRunId);
+      const failing = await BscTransferJob.updateOne({ _id: job._id, status: 'broadcast' }, { $set: { status: 'failing', errorCode: 'CHAIN_REVERTED' } });
+      if (failing.modifiedCount) await finalizeFailedJob({ ...job.toObject(), errorCode: 'Transaction BSC échouée on-chain.' });
       return;
     }
     if (await provider.getBlockNumber() < receipt.blockNumber + config.bsc.confirmations - 1) return;
-    await BscTransferJob.updateOne({ _id: job._id }, { $set: { status: 'completed', processedAt: new Date() } });
+    if (job.signedPurpose === 'gas_topup') {
+      await BscTransferJob.updateOne({ _id: job._id, status: 'broadcast' }, {
+        $set: { status: 'queued' },
+        $unset: { txHash: 1, signedPurpose: 1, signingAddress: 1, signingNonce: 1, signedValueAtomic: 1, signedTokenAmountAtomic: 1 },
+      });
+      return;
+    }
     if (job.kind === 'withdrawal') await finishWithdrawal(job);
+    await BscTransferJob.updateOne({ _id: job._id, status: 'broadcast' }, { $set: { status: 'completed', processedAt: new Date() } });
+    await updateCollectionStatus(job.collectionRunId);
     return;
   }
 
@@ -136,8 +257,11 @@ async function processJob(job, signers, provider, token) {
     const minimumGas = parseEther(config.bsc.gasTopUpBnb);
     const gasBalance = await provider.getBalance(wallet.address);
     if (gasBalance < minimumGas) {
-      const topUp = signers.gas.sendTransaction({ to: wallet.address, value: minimumGas - gasBalance });
-      await (await topUp).wait(config.bsc.confirmations);
+      await signAndJournalTransaction(job, signers.gas, signers, provider, token, {
+        to: wallet.address,
+        value: minimumGas - gasBalance,
+      }, 'gas_topup');
+      return;
     }
   }
   if (job.kind === 'withdrawal') {
@@ -147,18 +271,19 @@ async function processJob(job, signers, provider, token) {
     const minimumGas = parseEther(config.bsc.gasTopUpBnb);
     const masterGasBalance = await provider.getBalance(signers.master.address);
     if (masterGasBalance < minimumGas) {
-      const topUp = await signers.gas.sendTransaction({ to: signers.master.address, value: minimumGas - masterGasBalance });
-      await topUp.wait(config.bsc.confirmations);
+      await signAndJournalTransaction(job, signers.gas, signers, provider, token, {
+        to: signers.master.address,
+        value: minimumGas - masterGasBalance,
+      }, 'gas_topup');
+      return;
     }
   }
-  const tx = await token.connect(signer).transfer(destination, amount);
-  await BscTransferJob.updateOne({ _id: job._id }, { $set: { status: 'broadcast', txHash: tx.hash }, $inc: { attempts: 1 } });
-  if (job.kind === 'withdrawal') await Withdrawal.updateOne({ _id: job.withdrawalId }, { $set: { status: 'broadcast', txHash: tx.hash } });
-  const receipt = await tx.wait(config.bsc.confirmations);
-  if (receipt.status !== 1) throw new Error('Transaction BSC échouée on-chain.');
-  await BscTransferJob.updateOne({ _id: job._id }, { $set: { status: 'completed', processedAt: new Date() } });
-  if (job.kind === 'withdrawal') await finishWithdrawal({ ...job.toObject(), txHash: tx.hash });
-  await updateCollectionStatus(job.collectionRunId);
+  const data = token.interface.encodeFunctionData('transfer', [destination, amount]);
+  await signAndJournalTransaction(job, signer, signers, provider, token, {
+    to: config.bsc.usdtContract,
+    data,
+    value: 0n,
+  }, 'token_transfer', amount.toString());
 }
 
 async function main() {
@@ -209,6 +334,16 @@ async function main() {
       try { await processJob(job, signers, provider, token); }
       catch (error) { logger.error({ jobId: String(job._id), err: error }, 'Rapprochement de transaction BSC impossible'); }
     }
+    const signedJobs = await BscTransferJob.find({ status: 'signed' }).select('+signedRawTransaction').sort({ updatedAt: 1 }).limit(50);
+    for (const signedJob of signedJobs) {
+      try { await processJob(signedJob, signers, provider, token); }
+      catch (error) { logger.error({ jobId: String(signedJob._id), err: error }, 'Reprise de transaction signée BSC en attente'); }
+    }
+    const failingJobs = await BscTransferJob.find({ status: 'failing' }).sort({ updatedAt: 1 }).limit(50);
+    for (const failingJob of failingJobs) {
+      try { await finalizeFailedJob(failingJob); }
+      catch (error) { logger.error({ jobId: String(failingJob._id), err: error }, 'Libération du retrait échoué en attente'); }
+    }
     const job = await BscTransferJob.findOneAndUpdate(
       { status: 'queued' },
       { $set: { status: 'processing' }, $inc: { attempts: 1 } },
@@ -218,9 +353,14 @@ async function main() {
       try { await processJob(job, signers, provider, token); }
       catch (error) {
         logger.error({ jobId: String(job._id), err: error }, 'Transfert BSC échoué');
-        const failed = await BscTransferJob.updateOne({ _id: job._id, status: 'processing' }, { $set: { status: 'failed', errorCode: String(error.code || 'SIGNER_ERROR').slice(0, 80) } });
-        if (failed.modifiedCount) await failWithdrawal(job, error.message || error.code || 'SIGNER_ERROR');
-        await updateCollectionStatus(job.collectionRunId);
+        const errorMessage = error.message || error.code || 'SIGNER_ERROR';
+        const failing = await BscTransferJob.updateOne({ _id: job._id, status: 'processing' }, {
+          $set: { status: 'failing', errorCode: String(errorMessage).slice(0, 80) },
+        });
+        if (failing.modifiedCount) {
+          try { await finalizeFailedJob({ ...job.toObject(), errorCode: errorMessage }); }
+          catch (settlementError) { logger.error({ jobId: String(job._id), err: settlementError }, 'Finalisation de l’échec BSC en attente'); }
+        }
       }
     }
     await new Promise((resolve) => setTimeout(resolve, job ? 1000 : 5000));

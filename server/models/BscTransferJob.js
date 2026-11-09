@@ -4,7 +4,7 @@ const mongoose = require('mongoose');
 
 const schema = new mongoose.Schema({
   kind: { type: String, enum: ['withdrawal', 'sweep'], required: true, index: true },
-  status: { type: String, enum: ['prepared', 'preparing', 'queued', 'processing', 'broadcast', 'completed', 'failed'], default: 'queued', index: true },
+  status: { type: String, enum: ['prepared', 'preparing', 'queued', 'processing', 'signed', 'broadcast', 'failing', 'completed', 'failed'], default: 'queued', index: true },
   idempotencyKey: { type: String, required: true, unique: true, maxlength: 160 },
   sourceAddress: { type: String, required: true, lowercase: true, maxlength: 42 },
   destination: { type: String, required: true, lowercase: true, maxlength: 42 },
@@ -13,6 +13,12 @@ const schema = new mongoose.Schema({
   withdrawalId: { type: mongoose.Schema.Types.ObjectId, ref: 'Withdrawal', default: null },
   collectionRunId: { type: mongoose.Schema.Types.ObjectId, default: null },
   txHash: { type: String, default: null, maxlength: 80 },
+  signedPurpose: { type: String, enum: ['gas_topup', 'token_transfer', null], default: null },
+  signingAddress: { type: String, default: null, lowercase: true, maxlength: 42 },
+  signingNonce: { type: Number, default: null, min: 0, validate: (value) => value == null || Number.isSafeInteger(value) },
+  signedValueAtomic: { type: String, default: null, match: /^(0|[1-9][0-9]{0,77})$/ },
+  signedTokenAmountAtomic: { type: String, default: null, match: /^[1-9][0-9]{0,77}$/ },
+  signedRawTransaction: { type: String, default: null, maxlength: 20000, select: false },
   errorCode: { type: String, default: null, maxlength: 80 },
   attempts: { type: Number, default: 0, min: 0 },
   processedAt: { type: Date, default: null },
