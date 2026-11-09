@@ -119,7 +119,13 @@ async function runOnce() {
 
   let cursor = await BscIndexCursor.findOne({ name: 'bsc-usdt-bep20' });
   if (!cursor) {
-    cursor = await BscIndexCursor.create({ name: 'bsc-usdt-bep20', blockNumber: config.bsc.startBlock - 1 });
+    cursor = await BscIndexCursor.create({ name: 'bsc-usdt-bep20', blockNumber: config.bsc.startBlock - 1, version: 2 });
+  } else if (cursor.version < 2) {
+    cursor = await BscIndexCursor.findOneAndUpdate(
+      { _id: cursor._id, version: { $lt: 2 } },
+      { $set: { blockNumber: config.bsc.startBlock - 1, version: 2 } },
+      { new: true },
+    ) || await BscIndexCursor.findOne({ name: 'bsc-usdt-bep20' });
   }
   let fromBlock = cursor.blockNumber + 1;
   let depositCount = 0;
@@ -127,12 +133,9 @@ async function runOnce() {
 
   while (fromBlock <= safeHead) {
     const toBlock = Math.min(fromBlock + RANGE_SIZE - 1, safeHead);
-    const eligibleCustomers = await Customer.distinct('_id', { status: 'active', kycStatus: 'approved' });
     const addresses = await Wallet.distinct('address', {
       network: NETWORK,
-      status: 'active',
       address: { $type: 'string' },
-      customerId: { $in: eligibleCustomers },
     });
     for (let offset = 0; offset < addresses.length; offset += ADDRESS_BATCH) {
       const topics = addresses.slice(offset, offset + ADDRESS_BATCH).map((address) => zeroPadValue(address, 32));
