@@ -26,7 +26,7 @@ const BscTransferJob = require('../models/BscTransferJob');
 const BscSignerHeartbeat = require('../models/BscSignerHeartbeat');
 const BscIndexerHeartbeat = require('../models/BscIndexerHeartbeat');
 const { config } = require('../config');
-const { postLedgerTransaction } = require('../services/ledger');
+const { reserveBscWithdrawal } = require('../services/bscWithdrawal');
 
 const router = express.Router();
 const challengeTtlMs = auth.OTP_MINUTES * 60 * 1000;
@@ -881,32 +881,35 @@ router.post('/withdrawals', withdrawalLimiter, customerAuth, auth.requireSameOri
       if (existing.requestHash !== requestHash || String(existing.customerId) !== String(customer._id)) {
         return res.status(409).json({ error: 'Clé d’idempotence réutilisée avec d’autres détails.' });
       }
-      return res.status(200).json({ withdrawal: { id: String(existing._id), status: existing.status, txHash: existing.txHash } });
+      if (existing.status !== 'requested') {
+        return res.status(200).json({ withdrawal: { id: String(existing._id), status: existing.status, txHash: existing.txHash } });
+      }
+      withdrawal = existing;
     }
 
-    withdrawal = await Withdrawal.create({
+    withdrawal ||= await Withdrawal.create({
       customerId: customer._id, asset: 'USDT', network: 'BEP20', destination,
-      amountAtomic, decimals: 18, feeAtomic: '0', idempotencyKey, requestHash, status: 'queued',
+      amountAtomic, decimals: 18, feeAtomic: '0', idempotencyKey, requestHash, status: 'requested',
     });
-    transferJob = await BscTransferJob.create({
-      kind: 'withdrawal', status: 'queued', idempotencyKey: `bsc-withdraw:${idempotencyKey}`,
-      sourceAddress: config.bsc.masterAddress, destination, amountAtomic, withdrawalId: withdrawal._id,
-    });
-    const ledger = await postLedgerTransaction({
-      type: 'withdrawal', idempotencyKey: `bsc-withdrawal-reserve:${idempotencyKey}`,
-      sourceRef: String(withdrawal._id), createdBy: `customer:${customer._id}`,
-      postings: [
-        { accountRef: `customer:${customer._id}:available`, asset: 'USDT', network: 'BEP20', decimals: 18, side: 'debit', amountAtomic },
-        { accountRef: `customer:${customer._id}:reserved`, asset: 'USDT', network: 'BEP20', decimals: 18, side: 'credit', amountAtomic },
-      ],
-    });
+    transferJob = await BscTransferJob.findOne({ withdrawalId: withdrawal._id });
+    if (!transferJob) {
+      transferJob = await BscTransferJob.create({
+        kind: 'withdrawal', status: 'prepared', idempotencyKey: `bsc-withdraw:${idempotencyKey}`,
+        sourceAddress: config.bsc.masterAddress, destination, amountAtomic, withdrawalId: withdrawal._id,
+      });
+    }
+    const ledger = await reserveBscWithdrawal(withdrawal);
     ledgerPosted = true;
-    await Withdrawal.updateOne({ _id: withdrawal._id }, { $set: { ledgerReference: ledger.transaction.reference } });
-    return res.status(202).json({ withdrawal: { id: String(withdrawal._id), status: 'queued', amount: amountText, asset: 'USDT', network: 'BEP20' } });
+    await Promise.all([
+      Withdrawal.updateOne({ _id: withdrawal._id, status: { $in: ['requested', 'queued'] } }, { $set: { status: 'queued', ledgerReference: ledger.transaction.reference } }),
+      BscTransferJob.updateOne({ _id: transferJob._id, status: { $in: ['prepared', 'preparing'] } }, { $set: { status: 'queued' } }),
+    ]);
+    const current = await Withdrawal.findById(withdrawal._id).select('status txHash').lean();
+    return res.status(202).json({ withdrawal: { id: String(withdrawal._id), status: current?.status || 'queued', amount: amountText, asset: 'USDT', network: 'BEP20', txHash: current?.txHash || null } });
   } catch (error) {
-    if (transferJob && !ledgerPosted) await BscTransferJob.deleteOne({ _id: transferJob._id, status: 'queued' }).catch(() => {});
-    if (withdrawal && !ledgerPosted && error.code !== 11000) {
-      await Withdrawal.deleteOne({ _id: withdrawal._id, status: 'queued' }).catch(() => {});
+    if (withdrawal && !ledgerPosted && error.code === 'ERR_LEDGER_INSUFFICIENT_FUNDS') {
+      if (transferJob) await BscTransferJob.updateOne({ _id: transferJob._id, status: { $in: ['prepared', 'preparing'] } }, { $set: { status: 'failed', errorCode: error.code } }).catch(() => {});
+      await Withdrawal.updateOne({ _id: withdrawal._id, status: 'requested' }, { $set: { status: 'failed', reviewNote: 'Solde disponible insuffisant.' } }).catch(() => {});
     }
     return next(error);
   }

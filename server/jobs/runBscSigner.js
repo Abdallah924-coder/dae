@@ -15,6 +15,7 @@ const BscCollectionRun = require('../models/BscCollectionRun');
 const BscSignerHeartbeat = require('../models/BscSignerHeartbeat');
 const { getProvider } = require('../services/bsc');
 const { postLedgerTransaction } = require('../services/ledger');
+const { reserveBscWithdrawal } = require('../services/bscWithdrawal');
 
 const TOKEN_ABI = [
   'function decimals() view returns (uint8)',
@@ -74,6 +75,29 @@ async function updateCollectionStatus(collectionRunId) {
   if (pending) return;
   const failed = await BscTransferJob.countDocuments({ collectionRunId, status: 'failed' });
   await BscCollectionRun.updateOne({ _id: collectionRunId }, { $set: { status: failed ? 'partial' : 'completed' } });
+}
+
+async function finalizePreparedWithdrawal(job) {
+  const withdrawal = await Withdrawal.findById(job.withdrawalId).lean();
+  if (!withdrawal || !['requested', 'queued'].includes(withdrawal.status)) {
+    const error = new Error('Demande de retrait absente ou dans un état incompatible.');
+    error.code = 'WITHDRAWAL_STATE_INVALID';
+    throw error;
+  }
+  const customer = await Customer.findOne({
+    _id: withdrawal.customerId, status: 'active', kycStatus: 'approved',
+    emailVerifiedAt: { $ne: null }, phoneVerifiedAt: { $ne: null },
+  }).select('_id').lean();
+  if (!customer) {
+    await BscTransferJob.updateOne({ _id: job._id, status: 'preparing' }, { $set: { status: 'failed', errorCode: 'CUSTOMER_NOT_ELIGIBLE' } });
+    await Withdrawal.updateOne({ _id: withdrawal._id, status: 'requested' }, { $set: { status: 'failed', reviewNote: 'Le compte n’est plus actif ou approuvé KYC.' } });
+    return;
+  }
+  const ledger = await reserveBscWithdrawal(withdrawal);
+  await Promise.all([
+    BscTransferJob.updateOne({ _id: job._id, status: { $in: ['preparing', 'prepared'] } }, { $set: { status: 'queued' } }),
+    Withdrawal.updateOne({ _id: withdrawal._id, status: { $in: ['requested', 'queued'] } }, { $set: { status: 'queued', ledgerReference: ledger.transaction.reference } }),
+  ]);
 }
 
 async function processJob(job, signers, provider, token) {
@@ -158,6 +182,28 @@ async function main() {
   setInterval(heartbeat, 10_000);
 
   while (true) {
+    await BscTransferJob.updateMany(
+      { status: 'preparing', updatedAt: { $lt: new Date(Date.now() - 60_000) } },
+      { $set: { status: 'prepared' } },
+    );
+    const preparedJob = await BscTransferJob.findOneAndUpdate(
+      { kind: 'withdrawal', status: 'prepared' },
+      { $set: { status: 'preparing' } },
+      { sort: { createdAt: 1 }, new: true },
+    );
+    if (preparedJob) {
+      try {
+        await finalizePreparedWithdrawal(preparedJob);
+      } catch (error) {
+        logger.error({ jobId: String(preparedJob._id), err: error }, 'Préparation de retrait BSC en attente');
+        if (error.code === 'ERR_LEDGER_INSUFFICIENT_FUNDS' || error.code === 'WITHDRAWAL_STATE_INVALID') {
+          await BscTransferJob.updateOne({ _id: preparedJob._id, status: 'preparing' }, { $set: { status: 'failed', errorCode: String(error.code).slice(0, 80) } });
+          await Withdrawal.updateOne({ _id: preparedJob.withdrawalId, status: 'requested' }, { $set: { status: 'failed', reviewNote: String(error.message).slice(0, 500) } });
+        } else {
+          await BscTransferJob.updateOne({ _id: preparedJob._id, status: 'preparing' }, { $set: { status: 'prepared' } });
+        }
+      }
+    }
     const broadcasts = await BscTransferJob.find({ status: 'broadcast' }).sort({ updatedAt: 1 }).limit(50);
     for (const job of broadcasts) {
       try { await processJob(job, signers, provider, token); }

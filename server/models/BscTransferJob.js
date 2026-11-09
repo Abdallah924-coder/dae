@@ -4,7 +4,7 @@ const mongoose = require('mongoose');
 
 const schema = new mongoose.Schema({
   kind: { type: String, enum: ['withdrawal', 'sweep'], required: true, index: true },
-  status: { type: String, enum: ['queued', 'processing', 'broadcast', 'completed', 'failed'], default: 'queued', index: true },
+  status: { type: String, enum: ['prepared', 'preparing', 'queued', 'processing', 'broadcast', 'completed', 'failed'], default: 'queued', index: true },
   idempotencyKey: { type: String, required: true, unique: true, maxlength: 160 },
   sourceAddress: { type: String, required: true, lowercase: true, maxlength: 42 },
   destination: { type: String, required: true, lowercase: true, maxlength: 42 },
