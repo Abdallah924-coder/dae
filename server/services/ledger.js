@@ -94,7 +94,7 @@ function payloadHash(payload) {
     .digest('hex');
 }
 
-async function postLedgerTransaction(input) {
+async function postLedgerTransaction(input, { session: providedSession } = {}) {
   if (!input || !POSTED_TYPES.has(input.type)) {
     throw new TypeError('Type de transaction comptable invalide');
   }
@@ -142,7 +142,8 @@ async function postLedgerTransaction(input) {
         requestHash,
         ...payload,
       });
-      await transaction.save();
+      if (providedSession) await transaction.save({ session: providedSession });
+      else await transaction.save();
       return { transaction, duplicate: false };
     }
     if (!supportsMultiDocumentTransactions(mongoose.connection)) {
@@ -157,80 +158,87 @@ async function postLedgerTransaction(input) {
         await LedgerAccountLock.updateOne(
           { key: balance.key },
           { $setOnInsert: { key: balance.key, version: 0 } },
-          { upsert: true, setDefaultsOnInsert: true },
+          {
+            upsert: true,
+            setDefaultsOnInsert: true,
+            ...(providedSession ? { session: providedSession } : {}),
+          },
         );
       } catch (error) {
         if (error.code !== 11000) throw error;
       }
     }
 
-    const session = await mongoose.startSession();
-    let result;
-    try {
-      await session.withTransaction(async () => {
-        result = null;
-        for (const balance of lockedBalances) {
-          await LedgerAccountLock.updateOne(
-            { key: balance.key },
-            { $inc: { version: 1 } },
-            { session },
-          );
-        }
+    const writeTransaction = async (session) => {
+      for (const balance of lockedBalances) {
+        await LedgerAccountLock.updateOne(
+          { key: balance.key },
+          { $inc: { version: 1 } },
+          { session },
+        );
+      }
 
-        const existing = await LedgerTransaction.findOne({ idempotencyKey }).session(session);
-        if (existing) {
-          if (existing.requestHash !== requestHash) {
-            const conflict = new Error('La clé d’idempotence a déjà été utilisée pour une autre écriture');
-            conflict.code = 'ERR_IDEMPOTENCY_CONFLICT';
-            throw conflict;
-          }
-          result = { transaction: existing, duplicate: true };
-          return;
+      const existing = await LedgerTransaction.findOne({ idempotencyKey }).session(session);
+      if (existing) {
+        if (existing.requestHash !== requestHash) {
+          const conflict = new Error('La clé d’idempotence a déjà été utilisée pour une autre écriture');
+          conflict.code = 'ERR_IDEMPOTENCY_CONFLICT';
+          throw conflict;
         }
+        return { transaction: existing, duplicate: true };
+      }
 
-        for (const balance of lockedBalances) {
-          const history = await LedgerTransaction.find({
-            status: 'posted',
-            postings: { $elemMatch: { accountRef: balance.accountRef, asset: balance.asset, network: balance.network } },
-          })
-            .select('postings')
-            .session(session)
-            .lean();
-          let currentAtomic = 0n;
-          for (const ledgerTransaction of history) {
-            for (const posting of ledgerTransaction.postings) {
-              if (
-                posting.accountRef !== balance.accountRef ||
-                posting.asset !== balance.asset ||
-                posting.network !== balance.network
-              ) continue;
-              if (posting.decimals !== balance.decimals) {
-                throw new Error(`Précision incohérente dans le ledger pour ${balance.key}`);
-              }
-              const amount = BigInt(posting.amountAtomic);
-              currentAtomic += posting.side === 'credit' ? amount : -amount;
+      for (const balance of lockedBalances) {
+        const history = await LedgerTransaction.find({
+          status: 'posted',
+          postings: { $elemMatch: { accountRef: balance.accountRef, asset: balance.asset, network: balance.network } },
+        })
+          .select('postings')
+          .session(session)
+          .lean();
+        let currentAtomic = 0n;
+        for (const ledgerTransaction of history) {
+          for (const posting of ledgerTransaction.postings) {
+            if (
+              posting.accountRef !== balance.accountRef ||
+              posting.asset !== balance.asset ||
+              posting.network !== balance.network
+            ) continue;
+            if (posting.decimals !== balance.decimals) {
+              throw new Error(`Précision incohérente dans le ledger pour ${balance.key}`);
             }
-          }
-          if (balance.delta < 0n && currentAtomic + balance.delta < 0n) {
-            const insufficient = new Error(`Solde insuffisant dans le compartiment ${balance.accountRef}`);
-            insufficient.code = 'ERR_LEDGER_INSUFFICIENT_FUNDS';
-            throw insufficient;
+            const amount = BigInt(posting.amountAtomic);
+            currentAtomic += posting.side === 'credit' ? amount : -amount;
           }
         }
+        if (balance.delta < 0n && currentAtomic + balance.delta < 0n) {
+          const insufficient = new Error(`Solde insuffisant dans le compartiment ${balance.accountRef}`);
+          insufficient.code = 'ERR_LEDGER_INSUFFICIENT_FUNDS';
+          throw insufficient;
+        }
+      }
 
-        const transaction = new LedgerTransaction({
-          reference: `LED-${crypto.randomBytes(12).toString('base64url')}`,
-          idempotencyKey,
-          requestHash,
-          ...payload,
-        });
-        await transaction.save({ session });
-        result = { transaction, duplicate: false };
+      const transaction = new LedgerTransaction({
+        reference: `LED-${crypto.randomBytes(12).toString('base64url')}`,
+        idempotencyKey,
+        requestHash,
+        ...payload,
       });
+      await transaction.save({ session });
+      return { transaction, duplicate: false };
+    };
+
+    if (providedSession) return await writeTransaction(providedSession);
+    const session = await mongoose.startSession();
+    try {
+      let result;
+      await session.withTransaction(async () => {
+        result = await writeTransaction(session);
+      });
+      return result;
     } finally {
       await session.endSession();
     }
-    return result;
   } catch (error) {
     if (error.code !== 11000) throw error;
     const existing = await LedgerTransaction.findOne({ idempotencyKey });

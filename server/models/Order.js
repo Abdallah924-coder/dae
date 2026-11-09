@@ -41,6 +41,11 @@ const orderSchema = new mongoose.Schema(
     },
     mode: { type: String, enum: ['buy', 'sell'], required: true },
     asset: { type: String, enum: ['USDT', 'BTC', 'POL', 'ETH', 'SOL'], default: 'USDT' },
+    fulfillment: {
+      type: String,
+      enum: ['external_wallet', 'internal_balance'],
+      default: 'external_wallet',
+    },
     amountCrypto: { type: mongoose.Schema.Types.Decimal128, required: true },
     unitPriceUsd: { type: mongoose.Schema.Types.Decimal128, required: true },
     amountXaf: { type: Number, required: true },
@@ -54,6 +59,7 @@ const orderSchema = new mongoose.Schema(
       default: 'network',
     },
     binancePayId: { type: String, maxlength: 32 },
+    receivingAddress: { type: String, maxlength: 2000 },
     operator: { type: String, enum: ['mtn', 'airtel'], required: true },
     phone: { type: String, required: true },
     recipientName: { type: String, maxlength: 100 },
@@ -76,6 +82,7 @@ const orderSchema = new mongoose.Schema(
 );
 
 orderSchema.index({ status: 1, expiresAt: 1, _id: 1 });
+orderSchema.index({ customerId: 1, createdAt: -1, _id: -1 });
 orderSchema.index(
   { customerId: 1, idempotencyKey: 1 },
   {

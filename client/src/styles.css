@@ -4128,6 +4128,80 @@ body {
   color: #1c2921;
   font-size: 13px;
 }
+.customer-wallet-row .deposit-address-card,
+.deposit-address-card {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: 128px minmax(0, 1fr);
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+  margin: 8px 0;
+  padding: 14px;
+  border: 1px solid #e3e9e3;
+  border-radius: 12px;
+  background: #fff;
+}
+.deposit-address-qr {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+}
+.deposit-address-qr svg {
+  max-width: 100%;
+  height: auto;
+}
+.deposit-address-qr-unavailable {
+  display: grid;
+  width: 112px;
+  height: 112px;
+  place-items: center;
+  padding: 8px;
+  border: 1px dashed #cbd6cc;
+  border-radius: 8px;
+  color: #68756c;
+  font-size: 11px;
+  text-align: center;
+}
+.deposit-address-qr small,
+.deposit-address-details > span,
+.deposit-address-details > small {
+  color: #68756c;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.deposit-address-details {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+  min-width: 0;
+}
+.deposit-address-details code {
+  display: block;
+  width: 100%;
+  padding: 10px 12px;
+  overflow-wrap: anywhere;
+  border: 1px solid #e3e9e3;
+  border-radius: 8px;
+  background: #f7faf7;
+  color: #26342b;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+.copy-address-control {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+}
+.copy-address-control small {
+  color: #497447;
+  font-size: 11px;
+  line-height: 1.4;
+}
+.copy-address-control button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
 .customer-wallet-row small,
 .wallet-pending {
   color: #78837c;
@@ -4272,6 +4346,120 @@ body {
   color: #718078;
   font-size: 13px;
 }
+.customer-transaction-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 18px 0;
+}
+.transaction-filter {
+  display: grid;
+  gap: 5px;
+  color: #718078;
+  font-size: 11px;
+}
+.transaction-filter select {
+  min-width: 175px;
+  padding: 9px 30px 9px 11px;
+  border: 1px solid #dfe7df;
+  border-radius: 9px;
+  color: #27362c;
+  background: #fff;
+}
+.customer-transaction-list {
+  display: grid;
+}
+.customer-transaction-row {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) minmax(110px, auto) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 15px 22px;
+  border-bottom: 1px solid #f0f2f0;
+}
+.customer-transaction-row:last-child {
+  border-bottom: 0;
+}
+.transaction-type-icon {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: 50%;
+  background: #edf6ec;
+  color: #3e8241;
+  font-size: 17px;
+  font-weight: 800;
+}
+.transaction-withdrawal,
+.transaction-sell {
+  background: #fff2ec;
+  color: #b85d3e;
+}
+.customer-transaction-main,
+.customer-transaction-value {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+.customer-transaction-main > strong,
+.customer-transaction-value > strong {
+  color: #202c24;
+  font-size: 12px;
+}
+.customer-transaction-main > small,
+.customer-transaction-value > small {
+  color: #7b867e;
+  font-size: 10px;
+}
+.customer-transaction-value {
+  text-align: right;
+}
+.transaction-reference {
+  overflow-wrap: anywhere;
+  color: #647269;
+  font-size: 10px;
+}
+.transaction-filter {
+  flex: 0 0 auto;
+}
+@media (max-width: 720px) {
+  .customer-transaction-row {
+    grid-template-columns: 34px minmax(0, 1fr) auto;
+    gap: 10px;
+    padding: 14px;
+  }
+  .customer-transaction-row > .status {
+    grid-column: 2 / -1;
+    justify-self: start;
+  }
+  .customer-transaction-value {
+    font-size: 11px;
+  }
+  .transaction-filter select {
+    min-width: 140px;
+  }
+  .deposit-address-card {
+    grid-template-columns: 1fr;
+    justify-items: center;
+  }
+  .deposit-address-card.compact {
+    grid-template-columns: 92px minmax(0, 1fr);
+    justify-items: stretch;
+    gap: 10px;
+    padding: 10px;
+  }
+  .deposit-address-card.compact .deposit-address-qr svg {
+    width: 84px;
+  }
+  .deposit-address-card.compact .deposit-address-qr small {
+    text-align: center;
+    font-size: 9px;
+  }
+  .deposit-address-card.compact .deposit-address-details code {
+    font-size: 10px;
+  }
+}
 @media (max-width: 640px) {
   .customer-wallet-list-heading {
     padding: 18px 16px;
@@ -4319,6 +4507,13 @@ body {
   }
   .customer-order-history-heading {
     padding: 18px 16px;
+  }
+  .customer-order-history-heading:has(.transaction-filter) {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .customer-transaction-actions .button {
+    flex: 1 1 140px;
   }
   .customer-history-pagination {
     align-items: flex-start;

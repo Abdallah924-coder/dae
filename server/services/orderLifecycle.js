@@ -4,6 +4,8 @@ const mongoose = require('mongoose');
 const Order = require('../models/Order');
 const OrderEvent = require('../models/OrderEvent');
 const { supportsMultiDocumentTransactions } = require('./mongoCapabilities');
+const { postLedgerTransaction, customerLedgerAccountRef } = require('./ledger');
+const { decimalToScaled } = require('./orderQuote');
 
 function requireTransactions() {
   if (supportsMultiDocumentTransactions(mongoose.connection)) return;
@@ -11,6 +13,43 @@ function requireTransactions() {
   error.code = 'ERR_ORDER_TRANSACTIONS_REQUIRED';
   error.status = 503;
   throw error;
+}
+
+function internalBalanceCredit(order) {
+  if (
+    order.mode !== 'buy' ||
+    order.asset !== 'USDT' ||
+    order.network !== 'BEP20' ||
+    order.fulfillment !== 'internal_balance' ||
+    !order.customerId
+  ) return null;
+
+  const amountAtomic = decimalToScaled(String(order.amountCrypto), 18, 'exact').toString();
+  return {
+    type: 'exchange',
+    idempotencyKey: `buy-order:${order.ref}:credit:v1`,
+    sourceRef: order.ref,
+    createdBy: 'order-completion',
+    metadata: { orderRef: order.ref, fulfillment: 'internal_balance' },
+    postings: [
+      {
+        accountRef: customerLedgerAccountRef(order.customerId, 'available'),
+        asset: 'USDT',
+        network: 'BEP20',
+        decimals: 18,
+        side: 'credit',
+        amountAtomic,
+      },
+      {
+        accountRef: 'system:exchange-reserve',
+        asset: 'USDT',
+        network: 'BEP20',
+        decimals: 18,
+        side: 'debit',
+        amountAtomic,
+      },
+    ],
+  };
 }
 
 async function createOrderWithEvent(orderData, eventData) {
@@ -71,6 +110,10 @@ async function transitionOrder({
         { new: true, runValidators: true, session },
       );
       if (!order) return;
+      if (nextStatus === 'completed') {
+        const credit = internalBalanceCredit(order);
+        if (credit) await postLedgerTransaction(credit, { session });
+      }
       await OrderEvent.create(
         [
           {
@@ -92,4 +135,4 @@ async function transitionOrder({
   }
 }
 
-module.exports = { createOrderWithEvent, transitionOrder };
+module.exports = { createOrderWithEvent, transitionOrder, internalBalanceCredit };

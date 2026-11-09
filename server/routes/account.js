@@ -242,6 +242,8 @@ router.get('/features', async (_req, res, next) => {
     custody: {
       deposits: {
         enabled: Boolean(bscWallet.bscDepositsConfigReady(bscStatus) && indexerOnline && transactionsReady),
+        chainId: config.bsc.chainId,
+        tokenContract: config.bsc.usdtContract,
       },
       withdrawals: {
         enabled: Boolean(bscWallet.bscWithdrawalsConfigReady(bscStatus) && signerOnline && transactionsReady),
@@ -967,8 +969,9 @@ router.get('/balances', customerAuth, async (req, res, next) => {
 
 router.get('/funding-activity', customerAuth, async (req, res, next) => {
   try {
+    res.set('Cache-Control', 'no-store');
     const pageSize = 25;
-    const types = ['deposit', 'withdrawal', 'staking'];
+    const types = ['deposit', 'withdrawal', 'staking', 'buy', 'sell'];
     const requestedType = String(req.query.type || 'all');
     if (requestedType !== 'all' && !types.includes(requestedType)) {
       return res.status(400).json({ error: 'Type d’opération invalide.' });
@@ -991,17 +994,18 @@ router.get('/funding-activity', customerAuth, async (req, res, next) => {
       { type: 'deposit', model: Deposit },
       { type: 'withdrawal', model: Withdrawal },
       { type: 'staking', model: StakePosition },
+      { type: 'buy', model: Order, filter: { mode: 'buy' } },
+      { type: 'sell', model: Order, filter: { mode: 'sell' } },
     ].filter((entry) => requestedType === 'all' || requestedType === entry.type);
     const rows = (await Promise.all(
-      models.map(({ type, model }) => model.find({ customerId: req.customer._id, ...cursorFilter })
-        .select('asset network amountAtomic feeAtomic decimals status txHash createdAt productId lockDays rewardRateBps startsAt maturesAt')
+      models.map(({ type, model, filter = {} }) => model.find({ customerId: req.customer._id, ...filter, ...cursorFilter })
+        .select('asset network amountAtomic feeAtomic decimals status txHash ref amountCrypto amountXaf fulfillment createdAt productId lockDays rewardRateBps startsAt maturesAt')
         .sort({ createdAt: -1, _id: -1 })
         .limit(pageSize + 1)
         .lean()
         .then((items) => items.map((item) => ({ ...item, type }))),
       ),
-    )).flat()
-      .flat().sort((a, b) => b.createdAt - a.createdAt || String(b._id).localeCompare(String(a._id)));
+    )).flat().sort((a, b) => b.createdAt - a.createdAt || String(b._id).localeCompare(String(a._id)));
     const page = rows.slice(0, pageSize);
     const safeAmount = (atomic, decimals) => {
       if (!/^(0|[1-9][0-9]{0,77})$/.test(String(atomic ?? '')) || !Number.isInteger(decimals) || decimals < 0 || decimals > 36) return null;
@@ -1010,9 +1014,15 @@ router.get('/funding-activity', customerAuth, async (req, res, next) => {
     };
     const activities = page.map((item) => ({
       id: String(item._id), type: item.type, status: item.status, asset: item.asset,
-      network: item.network, amount: safeAmount(item.amountAtomic, item.decimals),
+      network: item.network,
+      amount: item.type === 'buy' || item.type === 'sell'
+        ? String(item.amountCrypto ?? '')
+        : safeAmount(item.amountAtomic, item.decimals),
       fee: item.type === 'withdrawal' ? safeAmount(item.feeAtomic, item.decimals) : null,
-      reference: item.txHash || null, createdAt: item.createdAt,
+      reference: item.txHash || item.ref || String(item._id),
+      amountXaf: item.type === 'buy' || item.type === 'sell' ? item.amountXaf : null,
+      fulfillment: item.type === 'buy' ? item.fulfillment : undefined,
+      createdAt: item.createdAt,
       ...(item.type === 'staking' ? { productId: item.productId, lockDays: item.lockDays, rewardRateBps: item.rewardRateBps, startsAt: item.startsAt, maturesAt: item.maturesAt } : {}),
     }));
     const hasMore = rows.length > pageSize;

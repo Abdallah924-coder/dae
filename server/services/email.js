@@ -36,9 +36,11 @@ async function sendEmail({ to, subject, text, html, replyTo }) {
 function orderSubmitted(order) {
   const action = order.mode === 'buy' ? 'Achat' : 'Vente';
   const transferDetails =
-    order.cryptoTransferMethod === 'binance_pay'
-      ? `Binance Pay · UID ${order.binancePayId}`
-      : `Réseau : ${order.networkName || order.network}`;
+    order.mode === 'sell' && order.cryptoTransferMethod === 'network'
+      ? `Envoyez les fonds à l’adresse : ${order.receivingAddress}\nRéseau : ${order.networkName || order.network}`
+      : order.cryptoTransferMethod === 'binance_pay'
+        ? `Binance Pay · UID ${order.binancePayId}`
+        : `Réseau : ${order.networkName || order.network}`;
   const text = `Bonjour,\n\nVotre demande de ${action.toLowerCase()} ${order.asset} a bien été reçue.\nRéférence : ${order.ref}\nMontant : ${order.amountCrypto} ${order.asset}\nValeur estimée : ${order.amountXaf} FCFA\n${transferDetails}\n\nVotre opération est en attente de vérification. Vous recevrez un autre e-mail lorsque son statut sera mis à jour.\nDAE Crypto`;
   return sendEmail({
     to: order.email,
@@ -57,20 +59,29 @@ function orderReceivedByAdmin(order) {
   const adminUrl = `${publicUrl}/admin`;
   const recipient =
     order.mode === 'sell' ? `\nBénéficiaire Mobile Money : ${order.recipientName}` : '';
-  const wallet = order.mode === 'buy' ? `\nPortefeuille de réception : ${order.wallet}` : '';
+  const wallet =
+    order.mode === 'buy' && order.fulfillment === 'internal_balance'
+      ? '\nDestination : crédit automatique du solde DAE USDT BEP20 lorsque la commande est terminée après vérification du paiement'
+      : order.mode === 'buy'
+        ? `\nPortefeuille de réception : ${order.wallet}`
+        : '';
+  const receivingAddress =
+    order.mode === 'sell' && order.receivingAddress
+      ? `\nAdresse DAE de réception : ${order.receivingAddress}`
+      : '';
   const binance =
     order.cryptoTransferMethod === 'binance_pay'
       ? `\nBinance Pay UID destinataire : ${order.binancePayId}`
       : '';
   const text =
-    `Nouvelle demande de ${action.toLowerCase()} reçue sur DAE Crypto.\nRéférence : ${order.ref}\nClient : ${order.email}\nTéléphone Mobile Money : ${order.operator} · ${order.phone}${recipient}\nMontant : ${order.amountCrypto} ${order.asset}\nValeur : ${order.amountXaf} FCFA (${order.amountUsdt} USDT)\nRéseau : ${order.networkName || order.network}${wallet}${binance}\nPreuve : ${order.proof || 'Non fournie'}\nOuvrir l’administration : ${adminUrl}`
+    `Nouvelle demande de ${action.toLowerCase()} reçue sur DAE Crypto.\nRéférence : ${order.ref}\nClient : ${order.email}\nTéléphone Mobile Money : ${order.operator} · ${order.phone}${recipient}\nMontant : ${order.amountCrypto} ${order.asset}\nValeur : ${order.amountXaf} FCFA (${order.amountUsdt} USDT)\nRéseau : ${order.networkName || order.network}${wallet}${receivingAddress}${binance}\nPreuve : ${order.proof || 'Non fournie'}\nOuvrir l’administration : ${adminUrl}`
       .filter(Boolean)
       .join('\n');
   return sendEmail({
     to: process.env.ADMIN_EMAIL?.trim(),
     subject: `Nouvelle demande ${action.toLowerCase()} — ${order.ref}`,
     text,
-    html: `<h2>Nouvelle demande de ${escapeHtml(action.toLowerCase())}</h2><ul><li>Référence : ${escapeHtml(order.ref)}</li><li>Client : ${escapeHtml(order.email)}</li><li>Mobile Money : ${escapeHtml(order.operator)} · ${escapeHtml(order.phone)}${order.mode === 'sell' ? ` · ${escapeHtml(order.recipientName)}` : ''}</li><li>Montant : ${escapeHtml(order.amountCrypto)} ${escapeHtml(order.asset)}</li><li>Valeur : ${escapeHtml(order.amountXaf)} FCFA (${escapeHtml(order.amountUsdt)} USDT)</li><li>${escapeHtml(order.networkName || order.network)}</li>${order.mode === 'buy' && order.wallet ? `<li>Portefeuille : ${escapeHtml(order.wallet)}</li>` : ''}${order.cryptoTransferMethod === 'binance_pay' ? `<li>Binance Pay UID destinataire : ${escapeHtml(order.binancePayId || '')}</li>` : ''}<li>Preuve : ${escapeHtml(order.proof || 'Non fournie')}</li></ul><p><a href="${escapeHtml(adminUrl)}">Ouvrir l’administration</a></p>`,
+    html: `<h2>Nouvelle demande de ${escapeHtml(action.toLowerCase())}</h2><ul><li>Référence : ${escapeHtml(order.ref)}</li><li>Client : ${escapeHtml(order.email)}</li><li>Mobile Money : ${escapeHtml(order.operator)} · ${escapeHtml(order.phone)}${order.mode === 'sell' ? ` · ${escapeHtml(order.recipientName)}` : ''}</li><li>Montant : ${escapeHtml(order.amountCrypto)} ${escapeHtml(order.asset)}</li><li>Valeur : ${escapeHtml(order.amountXaf)} FCFA (${escapeHtml(order.amountUsdt)} USDT)</li><li>${escapeHtml(order.networkName || order.network)}</li>${order.mode === 'buy' && order.fulfillment === 'internal_balance' ? '<li>Vérifier le paiement réel avant de terminer; la fin de commande crédite automatiquement le solde DAE USDT BEP20.</li>' : ''}${order.mode === 'buy' && order.wallet ? `<li>Portefeuille : ${escapeHtml(order.wallet)}</li>` : ''}${order.mode === 'sell' && order.receivingAddress ? `<li>Adresse de réception DAE : ${escapeHtml(order.receivingAddress)}</li>` : ''}${order.cryptoTransferMethod === 'binance_pay' ? `<li>Binance Pay UID destinataire : ${escapeHtml(order.binancePayId || '')}</li>` : ''}<li>Preuve : ${escapeHtml(order.proof || 'Non fournie')}</li></ul><p><a href="${escapeHtml(adminUrl)}">Ouvrir l’administration</a></p>`,
   });
 }
 function orderStatusChanged(order, status) {
@@ -89,7 +100,13 @@ function orderStatusChanged(order, status) {
       'Nous n’avons pas pu finaliser votre opération. Contactez notre équipe en indiquant votre référence.',
     ],
   };
-  const message = messages[status];
+  const message =
+    status === 'completed' && order.fulfillment === 'internal_balance'
+      ? [
+          'terminée',
+          'Votre paiement a été vérifié et vos USDT ont été crédités sur votre solde DAE BEP20.',
+        ]
+      : messages[status];
   if (!message) return Promise.resolve();
   const [subjectStatus, explanation] = message;
   const text = `Bonjour,\n\nLe statut de votre demande ${order.ref} (${order.mode === 'buy' ? 'achat' : 'vente'} ${order.asset}) a été mis à jour : ${subjectStatus}.\n\n${explanation}\n\nDAE Crypto`;

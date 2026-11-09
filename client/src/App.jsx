@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { QRCodeSVG } from 'qrcode.react';
 
 const assetsFallback = [
   {
@@ -68,6 +69,30 @@ const statusNames = {
   cancelled: 'Annulée',
   expired: 'Expirée',
   failed: 'Échouée',
+};
+const activityTypeNames = {
+  deposit: 'Dépôt',
+  withdrawal: 'Retrait',
+  buy: 'Achat',
+  sell: 'Vente',
+  staking: 'Staking',
+};
+const activityStatusNames = {
+  detected: 'Détecté',
+  confirming: 'Confirmations en cours',
+  compliance_review: 'Vérification en cours',
+  credited: 'Crédité',
+  rejected: 'Rejeté',
+  requested: 'Demandé',
+  approved: 'Approuvé',
+  queued: 'En file d’attente',
+  broadcast: 'Envoyé sur le réseau',
+  completed: 'Terminée',
+  failed: 'Échouée',
+  cancelled: 'Annulé',
+  locked: 'Bloqué',
+  active: 'Actif',
+  matured: 'Arrivé à échéance',
 };
 const kycStatusNames = {
   not_started: 'Non démarrée',
@@ -262,6 +287,82 @@ function Notice({ children, type = 'error' }) {
       {children}
     </div>
   ) : null;
+}
+function CopyAddressButton({ value }) {
+  const [message, setMessage] = useState('');
+  async function copyAddress() {
+    setMessage('');
+    try {
+      if (navigator.clipboard?.writeText) {
+        try {
+          await navigator.clipboard.writeText(value);
+          setMessage('Valeur copiée.');
+          return;
+        } catch {
+          // Fall through to the legacy copy method for browsers without clipboard permission.
+        }
+      }
+      const input = document.createElement('textarea');
+      input.value = value;
+      input.setAttribute('readonly', '');
+      input.style.position = 'fixed';
+      input.style.opacity = '0';
+      document.body.append(input);
+      input.select();
+      const copied = document.execCommand('copy');
+      input.remove();
+      if (!copied) throw new Error('copy-command-failed');
+      setMessage('Valeur copiée.');
+    } catch {
+      setMessage('Copie impossible ici. Sélectionnez la valeur et copiez-la manuellement.');
+    }
+  }
+  return (
+    <span className="copy-address-control">
+      <button
+        type="button"
+        className="button button-outline compact"
+        onClick={copyAddress}
+        disabled={!value}
+      >
+        {message === 'Valeur copiée.' ? 'Copié ✓' : 'Copier'}
+      </button>
+      {message && <small role="status">{message}</small>}
+    </span>
+  );
+}
+function DepositAddress({ address, contractAddress, chainId, compact = false }) {
+  const validQrConfig =
+    /^0x[a-fA-F0-9]{40}$/.test(contractAddress || '') &&
+    Number.isInteger(chainId) &&
+    chainId > 0;
+  const qrValue = validQrConfig
+    ? `ethereum:${contractAddress}@${chainId}/transfer?address=${address}`
+    : '';
+  return (
+    <div className={compact ? 'deposit-address-card compact' : 'deposit-address-card'}>
+      <div className="deposit-address-qr">
+        {qrValue ? (
+          <QRCodeSVG
+            value={qrValue}
+            size={compact ? 112 : 192}
+            level="Q"
+            marginSize={3}
+            title="QR code de dépôt USDT sur BNB Smart Chain"
+          />
+        ) : (
+          <span className="deposit-address-qr-unavailable">QR temporairement indisponible.</span>
+        )}
+        <small>USDT · BNB Smart Chain · BEP20</small>
+      </div>
+      <div className="deposit-address-details">
+        <span>Adresse personnelle de dépôt</span>
+        <code>{address}</code>
+        <CopyAddressButton value={address} />
+        <small>Le QR prépare un transfert de jeton USDT sur le réseau BNB Smart Chain.</small>
+      </div>
+    </div>
+  );
 }
 function MarketHistoryChart({ assetId, markets }) {
   const [history, setHistory] = useState(null);
@@ -796,7 +897,7 @@ function imageData(file) {
     reader.readAsDataURL(file);
   });
 }
-function Exchange({ mode }) {
+function Exchange({ mode, forcedAsset, forcedNetwork, sendIntent = false }) {
   const navigate = useNavigate();
   const [idempotencyKey] = useState(() => getOrderIdempotencyKey(mode));
   const [config, setConfig] = useState(null),
@@ -805,9 +906,9 @@ function Exchange({ mode }) {
   const [accountChecked, setAccountChecked] = useState(false);
   const [accountError, setAccountError] = useState('');
   const [asset, setAsset] = useState(
-      () => new URLSearchParams(location.search).get('asset') || 'USDT',
+      () => forcedAsset || new URLSearchParams(location.search).get('asset') || 'USDT',
     ),
-    [network, setNetwork] = useState(''),
+    [network, setNetwork] = useState(forcedNetwork || ''),
     [cryptoTransferMethod, setCryptoTransferMethod] = useState('network'),
     [amount, setAmount] = useState('');
   const [quote, setQuote] = useState(null);
@@ -910,8 +1011,11 @@ function Exchange({ mode }) {
   }, [quote]);
   const selectedAsset =
     config?.assets?.find((a) => a.id === asset) || assetsFallback.find((a) => a.id === asset);
+  const internalBalanceBuy = mode === 'buy' && asset === 'USDT';
   const selectedNetwork =
-    cryptoTransferMethod === 'binance_pay'
+    internalBalanceBuy
+      ? { id: 'BEP20', name: 'Solde DAE · BNB Smart Chain (BEP20)', address: '' }
+      : cryptoTransferMethod === 'binance_pay'
       ? {
           id: 'BINANCE_PAY',
           name: 'Binance Pay (transfert interne)',
@@ -921,12 +1025,12 @@ function Exchange({ mode }) {
   const setField = (key, value) => setForm((old) => ({ ...old, [key]: value }));
   const minimum = mode === 'buy' ? rates?.buyMinXaf : rates?.sellMinXaf,
     maximum = mode === 'buy' ? rates?.buyMaxXaf : rates?.sellMaxXaf;
-  const networkOptions = (selectedAsset?.networks || []).filter(
-    (n) => mode === 'buy' || n.available,
-  );
+  const networkOptions = (selectedAsset?.networks || [])
+    .filter((n) => mode === 'buy' || n.available)
+    .filter((n) => !forcedNetwork || n.id === forcedNetwork);
   function changeAsset(id) {
-    setAsset(id);
-    setNetwork('');
+    if (!forcedAsset) setAsset(id);
+    setNetwork(forcedNetwork || '');
   }
   function refreshQuote() {
     setStep(1);
@@ -949,9 +1053,9 @@ function Exchange({ mode }) {
         refreshQuote();
         return setError('La cotation a expiré. Vérifiez le nouveau montant avant de continuer.');
       }
-      if (!quote || !quote.quoteToken || quoteLoading || (cryptoTransferMethod === 'network' && !network))
+      if (!quote || !quote.quoteToken || quoteLoading || (!internalBalanceBuy && cryptoTransferMethod === 'network' && !network))
         return setError(quoteError || 'Choisissez un mode de transfert et un montant valide.');
-      if (mode === 'sell' && cryptoTransferMethod === 'binance_pay' && !config?.binancePayId)
+      if (mode === 'sell' && !forcedNetwork && cryptoTransferMethod === 'binance_pay' && !config?.binancePayId)
         return setError('Ce mode de transfert est temporairement indisponible. Choisissez un réseau blockchain.');
       if (minimum && (quote.xaf < minimum || quote.xaf > maximum))
         return setError(
@@ -996,8 +1100,12 @@ function Exchange({ mode }) {
           amount,
           quoteToken: quote.quoteToken,
           idempotencyKey,
-          network: cryptoTransferMethod === 'binance_pay' ? 'BINANCE_PAY' : network,
-          cryptoTransferMethod,
+          network: internalBalanceBuy
+            ? 'BEP20'
+            : cryptoTransferMethod === 'binance_pay'
+              ? 'BINANCE_PAY'
+              : network,
+          cryptoTransferMethod: internalBalanceBuy ? 'network' : cryptoTransferMethod,
           operator,
           phone: form.phone,
           recipientName: mode === 'sell' ? form.recipientName : undefined,
@@ -1077,11 +1185,13 @@ function Exchange({ mode }) {
             ← Accueil
           </Link>
           <span className="eyebrow plain">ÉCHANGE SÉCURISÉ</span>
-          <h1>{mode === 'buy' ? 'Acheter une crypto' : 'Vendre une crypto'}</h1>
+          <h1>{sendIntent ? 'Envoyer des USDT' : mode === 'buy' ? 'Acheter une crypto' : 'Vendre une crypto'}</h1>
           <p>
             {mode === 'buy'
-              ? 'Votre montant est calculé en direct avant confirmation. Préparez votre portefeuille et votre moyen de paiement.'
-              : 'Vérifiez le réseau de dépôt et le montant estimé avant d’envoyer vos actifs.'}
+              ? 'Votre montant est calculé en direct avant confirmation. Préparez votre moyen de paiement.'
+              : sendIntent
+                ? 'Envoyez des USDT sur l’adresse DAE indiquée, puis indiquez le numéro Mobile Money où recevoir vos FCFA.'
+                : 'Vérifiez le réseau de dépôt et le montant estimé avant d’envoyer vos actifs.'}
           </p>
         </div>
         <div className="exchange-layout">
@@ -1111,7 +1221,7 @@ function Exchange({ mode }) {
                 {step === 1 && (
                   <section>
                     <h2>Quel actif souhaitez-vous {mode === 'buy' ? 'acheter' : 'vendre'} ?</h2>
-                    <div className="asset-grid">
+                    {!forcedAsset && <div className="asset-grid">
                       {config.assets.map((a) => (
                         <button
                           type="button"
@@ -1126,8 +1236,29 @@ function Exchange({ mode }) {
                           </span>
                         </button>
                       ))}
-                    </div>
-                    <fieldset className="transfer-method-picker">
+                    </div>}
+                    {internalBalanceBuy ? (
+                      <div className="payment-instructions">
+                        <strong>Crédit sur votre solde DAE</strong>
+                        <p>
+                          Après vérification de votre paiement, les USDT seront crédités sur votre
+                          solde DAE en BNB Smart Chain (BEP20).
+                        </p>
+                        <small>
+                          Une capture seule ne crédite pas le solde : l’équipe confirme d’abord la
+                          réception effective du paiement.
+                        </small>
+                      </div>
+                    ) : forcedNetwork ? (
+                      <div className="payment-instructions">
+                        <strong>Réseau de transfert imposé</strong>
+                        <p>USDT · BNB Smart Chain (BEP20)</p>
+                        <small>
+                          Utilisez uniquement l’adresse DAE affichée à l’étape suivante. Un
+                          transfert sur un autre réseau peut être perdu.
+                        </small>
+                      </div>
+                    ) : <fieldset className="transfer-method-picker">
                       <legend>
                         {mode === 'buy'
                           ? 'Comment recevoir votre crypto ?'
@@ -1215,7 +1346,7 @@ function Exchange({ mode }) {
                           )}
                         </div>
                       )}
-                    </fieldset>
+                    </fieldset>}
                     <label className="field-label">
                       {mode === 'buy' ? 'Montant en USDT' : `Quantité en ${asset}`}
                       <input
@@ -1257,10 +1388,14 @@ function Exchange({ mode }) {
                   <section id="customer-fields">
                     <h2>
                       {mode === 'buy'
-                        ? cryptoTransferMethod === 'binance_pay'
-                          ? 'Votre Binance UID et le paiement'
-                          : 'Votre portefeuille et le paiement'
-                        : 'Vos coordonnées de réception'}
+                        ? internalBalanceBuy
+                          ? 'Paiement Mobile Money'
+                          : cryptoTransferMethod === 'binance_pay'
+                            ? 'Votre Binance UID et le paiement'
+                            : 'Votre portefeuille et le paiement'
+                        : sendIntent
+                          ? 'Adresse DAE et numéro Mobile Money'
+                          : 'Vos coordonnées de réception'}
                     </h2>
                     {mode === 'buy' && (
                       <div className="payment-instructions">
@@ -1282,21 +1417,18 @@ function Exchange({ mode }) {
                         <p className="address">
                           {selectedNetwork?.address || 'Réseau temporairement indisponible'}
                         </p>
-                        <button
-                          type="button"
-                          className="text-button"
-                          onClick={() =>
-                            navigator.clipboard?.writeText(selectedNetwork?.address || '')
-                          }
-                        >
-                          {cryptoTransferMethod === 'binance_pay'
-                            ? 'Copier l’UID Binance'
-                            : 'Copier l’adresse'}
-                        </button>
+                        <CopyAddressButton value={selectedNetwork?.address || ''} />
                         {cryptoTransferMethod === 'binance_pay' && (
                           <small>
                             Envoyez le montant exact depuis Binance Pay et joignez sa preuve de
                             transfert.
+                          </small>
+                        )}
+                        {sendIntent && (
+                          <small>
+                            Envoyez le montant indiqué à cette adresse BEP20, puis renseignez le
+                            numéro Mobile Money ci-dessous. Le paiement en FCFA sera traité après
+                            vérification de la réception.
                           </small>
                         )}
                       </div>
@@ -1335,7 +1467,7 @@ function Exchange({ mode }) {
                           tard ou contactez l’assistance DAE.
                         </p>
                       )}
-                    {mode === 'buy' && cryptoTransferMethod === 'network' && (
+                    {mode === 'buy' && !internalBalanceBuy && cryptoTransferMethod === 'network' && (
                       <label className="field-label">
                         Adresse de réception crypto
                         <input
@@ -1348,7 +1480,7 @@ function Exchange({ mode }) {
                         />
                       </label>
                     )}
-                    {mode === 'buy' && cryptoTransferMethod === 'binance_pay' && (
+                    {mode === 'buy' && !internalBalanceBuy && cryptoTransferMethod === 'binance_pay' && (
                       <label className="field-label">
                         Votre Binance UID
                         <input
@@ -1421,7 +1553,7 @@ function Exchange({ mode }) {
                       </p>
                       <p>
                         <span>Mode de transfert</span>
-                        <strong>{selectedNetwork?.name}</strong>
+                        <strong>{selectedNetwork?.name || network}</strong>
                       </p>
                       <p>
                         <span>{mode === 'buy' ? 'À payer' : 'À recevoir'}</span>
@@ -1432,6 +1564,11 @@ function Exchange({ mode }) {
                         <strong>{money(quote?.rate)} / USDT</strong>
                       </p>
                     </div>
+                    {internalBalanceBuy && (
+                      <p className="customer-profile-note">
+                        Après réception et vérification du paiement, {formatDecimalString(quote?.amountCrypto || '0')} USDT seront crédités sur votre solde DAE BEP20. Vous pourrez ensuite demander un retrait si le service de retrait est disponible pour votre compte.
+                      </p>
+                    )}
                     <label className="field-label">
                       Capture du {mode === 'buy' ? 'paiement' : 'transfert'}
                       <input
@@ -1583,7 +1720,9 @@ function Tracking() {
               </div>
               <p className="status-description">
                 {
-                  {
+                  order.fulfillment === 'internal_balance' && order.status === 'completed'
+                    ? 'Paiement vérifié : vos USDT ont été crédités sur votre solde DAE BEP20.'
+                    : {
                     created: 'Commande créée. Nous attendons la déclaration de votre paiement.',
                     payment_declared: 'Votre preuve est reçue et en attente de vérification.',
                     processing: 'Votre paiement est validé. Votre opération est en cours.',
@@ -1592,7 +1731,7 @@ function Tracking() {
                       'Cette commande a été annulée. Contactez notre équipe si vous avez déjà payé.',
                     expired: 'Cette commande a expiré.',
                     failed: 'Le traitement a rencontré un problème. Contactez notre équipe.',
-                  }[order.status]
+                    }[order.status]
                 }
               </p>
               <div className="timeline">
@@ -1632,6 +1771,22 @@ function Tracking() {
                   <p>
                     <span>Binance UID destinataire</span>
                     <strong>{order.binancePayId}</strong>
+                  </p>
+                )}
+                {order.mode === 'sell' && order.receivingAddress && (
+                  <p>
+                    <span>Adresse de réception DAE</span>
+                    <strong className="transaction-reference">{order.receivingAddress}</strong>
+                  </p>
+                )}
+                {order.fulfillment === 'internal_balance' && (
+                  <p>
+                    <span>Crédit du solde</span>
+                    <strong>
+                      {order.status === 'completed'
+                        ? 'USDT BEP20 crédités'
+                        : 'Après vérification effective du paiement'}
+                    </strong>
                   </p>
                 )}
                 <p>
@@ -2433,6 +2588,15 @@ function CustomerPortal() {
   const [orderHistoryLoading, setOrderHistoryLoading] = useState(false);
   const [orderHistoryError, setOrderHistoryError] = useState('');
   const orderHistoryRequest = useRef(false);
+  const [activityFilter, setActivityFilter] = useState('all');
+  const [activities, setActivities] = useState([]);
+  const [activityPagination, setActivityPagination] = useState({
+    hasMore: false,
+    nextCursor: null,
+  });
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [activityError, setActivityError] = useState('');
+  const activityRequest = useRef(false);
   const [marketSnapshot, setMarketSnapshot] = useState(null);
   const [sessions, setSessions] = useState([]);
   const [activeSessionCount, setActiveSessionCount] = useState(0);
@@ -2517,6 +2681,31 @@ function CustomerPortal() {
       active = false;
     };
   }, [path]);
+  useEffect(() => {
+    if (path !== '/transactions') return undefined;
+    let active = true;
+    setActivities([]);
+    setActivityPagination({ hasMore: false, nextCursor: null });
+    setActivityLoading(true);
+    setActivityError('');
+    api(`/api/account/funding-activity?type=${encodeURIComponent(activityFilter)}`)
+      .then((result) => {
+        if (!active) return;
+        setActivities(result.activities || []);
+        setActivityPagination(result.pagination || { hasMore: false, nextCursor: null });
+      })
+      .catch((error) => {
+        if (!active) return;
+        if (error.status === 401) navigate('/connexion', { replace: true });
+        else setActivityError(error.message);
+      })
+      .finally(() => {
+        if (active) setActivityLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [path, activityFilter, navigate]);
   useEffect(() => {
     if (path !== '/securite') return undefined;
     let active = true;
@@ -2613,10 +2802,29 @@ function CustomerPortal() {
       setOrderHistoryLoading(false);
     }
   }
+  async function loadMoreActivities() {
+    if (!activityPagination.nextCursor || activityLoading || activityRequest.current) return;
+    activityRequest.current = true;
+    setActivityLoading(true);
+    setActivityError('');
+    try {
+      const result = await api(
+        `/api/account/funding-activity?type=${encodeURIComponent(activityFilter)}&cursor=${encodeURIComponent(activityPagination.nextCursor)}`,
+      );
+      setActivities((current) => [...current, ...(result.activities || [])]);
+      setActivityPagination(result.pagination || { hasMore: false, nextCursor: null });
+    } catch (error) {
+      setActivityError(error.message);
+    } finally {
+      activityRequest.current = false;
+      setActivityLoading(false);
+    }
+  }
   const sections = [
     ['/compte', 'Aperçu', '⌂'],
     ['/profil', 'Mon profil', '○'],
     ['/portefeuille', 'Portefeuille', '◈'],
+    ['/transactions', 'Transactions', '⇄'],
     ['/depot', 'Dépôt', '↓'],
     ['/retrait', 'Retrait', '↑'],
     ['/staking', 'Staking', '◇'],
@@ -2627,6 +2835,7 @@ function CustomerPortal() {
     '/compte': 'Vue d’ensemble',
     '/profil': 'Mon profil',
     '/portefeuille': 'Mon portefeuille',
+    '/transactions': 'Mes transactions',
     '/depot': 'Déposer des actifs',
     '/retrait': 'Retirer des actifs',
     '/staking': 'Staking',
@@ -2946,6 +3155,98 @@ function CustomerPortal() {
               </section>
             </>
           )}
+          {path === '/transactions' && (
+            <>
+              <section className="customer-transaction-actions" aria-label="Nouvelle opération">
+                <Link to="/depot" className="button button-outline">Déposer USDT</Link>
+                <Link to="/retrait" className="button button-outline">Retirer USDT</Link>
+                <Link to="/acheter?asset=USDT" className="button button-primary">Acheter USDT</Link>
+                <Link to="/envoyer" className="button button-primary">Envoyer / vendre USDT</Link>
+              </section>
+              <section className="customer-order-history customer-transactions">
+                <div className="customer-order-history-heading">
+                  <div>
+                    <span className="eyebrow plain">HISTORIQUE DU COMPTE</span>
+                    <h2>Dépôts, retraits, achats et ventes</h2>
+                  </div>
+                  <label className="transaction-filter">
+                    <span>Type</span>
+                    <select
+                      value={activityFilter}
+                      onChange={(event) => setActivityFilter(event.target.value)}
+                    >
+                      <option value="all">Toutes les opérations</option>
+                      <option value="deposit">Dépôts</option>
+                      <option value="withdrawal">Retraits</option>
+                      <option value="buy">Achats</option>
+                      <option value="sell">Ventes / envois</option>
+                    </select>
+                  </label>
+                </div>
+                <Notice>{activityError}</Notice>
+                {activities.length ? (
+                  <div className="customer-transaction-list">
+                    {activities.map((activity) => (
+                      <article className="customer-transaction-row" key={`${activity.type}:${activity.id}`}>
+                        <span className={`transaction-type-icon transaction-${activity.type}`}>
+                          {activity.type === 'deposit' ? '↓' : activity.type === 'withdrawal' ? '↑' : activity.type === 'buy' ? '+' : activity.type === 'sell' ? '↗' : '◇'}
+                        </span>
+                        <div className="customer-transaction-main">
+                          <strong>{activityTypeNames[activity.type] || 'Opération'} · {activity.asset}</strong>
+                          <small>
+                            {activity.network || 'Réseau non précisé'} · {new Date(activity.createdAt).toLocaleString('fr-FR')}
+                          </small>
+                          {activity.reference && (
+                            activity.type === 'buy' || activity.type === 'sell' ? (
+                              <Link
+                                className="transaction-reference"
+                                to={`/suivi?ref=${encodeURIComponent(activity.reference)}`}
+                              >
+                                Réf. {activity.reference}
+                              </Link>
+                            ) : (
+                              <code className="transaction-reference">{activity.reference}</code>
+                            )
+                          )}
+                          {activity.fulfillment === 'internal_balance' && activity.status !== 'completed' && (
+                            <small>Crédit du solde après confirmation effective du paiement.</small>
+                          )}
+                        </div>
+                        <div className="customer-transaction-value">
+                          <strong>{formatDecimalString(String(activity.amount ?? '0'))} {activity.asset}</strong>
+                          {activity.amountXaf != null && <small>{money(activity.amountXaf)}</small>}
+                          {activity.fee != null && <small>Frais : {formatDecimalString(activity.fee)} {activity.asset}</small>}
+                        </div>
+                        <span className={`status status-${activity.status}`}>
+                          {activityStatusNames[activity.status] || statusNames[activity.status] || activity.status}
+                        </span>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="customer-empty-orders">
+                    {activityLoading
+                      ? 'Chargement des transactions…'
+                      : activityError
+                        ? 'Les transactions ne peuvent pas être chargées.'
+                        : 'Aucune transaction enregistrée pour ce filtre.'}
+                  </p>
+                )}
+                {activityPagination.nextCursor && (
+                  <div className="customer-history-pagination">
+                    <span>{activities.length} opérations chargées</span>
+                    <button
+                      className="button button-outline compact"
+                      onClick={loadMoreActivities}
+                      disabled={activityLoading}
+                    >
+                      {activityLoading ? 'Chargement…' : 'Charger les opérations précédentes'}
+                    </button>
+                  </div>
+                )}
+              </section>
+            </>
+          )}
           {path === '/profil' && (
             <div className="customer-profile-grid">
               <section className="customer-profile-card">
@@ -3038,7 +3339,7 @@ function CustomerPortal() {
                     <span><b>Portefeuille & soldes</b><small>Consulter les soldes de votre compte</small></span>
                     <span aria-hidden="true">→</span>
                   </Link>
-                  <Link to="/compte">
+                  <Link to="/transactions">
                     <span><b>Activité du compte</b><small>Achats, ventes et opérations enregistrées</small></span>
                     <span aria-hidden="true">→</span>
                   </Link>
@@ -3136,9 +3437,12 @@ function CustomerPortal() {
                       <small>USDT · BEP20</small>
                     </div>
                     {wallet.address ? (
-                      <span className="wallet-address-value" title={wallet.address}>
-                        {wallet.address}
-                      </span>
+                      <DepositAddress
+                        address={wallet.address}
+                        contractAddress={features?.custody?.deposits?.tokenContract}
+                        chainId={features?.custody?.deposits?.chainId}
+                        compact
+                      />
                     ) : (
                       <span className="wallet-pending">
                         {wallet.status === 'suspended'
@@ -3147,15 +3451,6 @@ function CustomerPortal() {
                             ? 'Vérification requise'
                             : 'Dépôts temporairement indisponibles'}
                       </span>
-                    )}
-                    {wallet.address && (
-                      <button
-                        type="button"
-                        className="button button-outline compact"
-                        onClick={() => navigator.clipboard?.writeText(wallet.address)}
-                      >
-                        Copier
-                      </button>
                     )}
                   </article>
                   ))}
@@ -3191,16 +3486,11 @@ function CustomerPortal() {
                     Envoyez uniquement des USDT sur le réseau BNB Smart Chain (BEP20) à cette
                     adresse. Les envois depuis un autre réseau peuvent être perdus.
                   </p>
-                  <div className="bsc-deposit-address">
-                    <code>{bscDepositWallet.address}</code>
-                    <button
-                      type="button"
-                      className="button button-outline compact"
-                      onClick={() => navigator.clipboard?.writeText(bscDepositWallet.address)}
-                    >
-                      Copier
-                    </button>
-                  </div>
+                  <DepositAddress
+                    address={bscDepositWallet.address}
+                    contractAddress={features?.custody?.deposits?.tokenContract}
+                    chainId={features?.custody?.deposits?.chainId}
+                  />
                   <div className="module-state"><i /> Adresse de dépôt active · USDT BEP20</div>
                 </>
               ) : customer.kycStatus !== 'approved' ? (
@@ -4657,6 +4947,13 @@ function Admin() {
                 <span>Mode de transfert</span>
                 <strong>{selected.networkName || selected.network}</strong>
               </p>
+              {selected.fulfillment === 'internal_balance' && (
+                <p className="customer-profile-note">
+                  Après vérification réelle du paiement, le passage à « Terminée » crédite
+                  automatiquement {formatDecimalString(String(selected.amountCrypto))} USDT sur le
+                  solde DAE BEP20.
+                </p>
+              )}
               {selected.cryptoTransferMethod === 'binance_pay' && (
                 <p>
                   <span>Binance UID destinataire</span>
@@ -4737,10 +5034,11 @@ export default function App() {
   if (path === '/connexion') return <AccountAccess initialMode="login" />;
   if (path === '/mot-de-passe-oublie') return <PasswordRecovery />;
   if (
-    ['/compte', '/profil', '/portefeuille', '/depot', '/retrait', '/staking', '/verification', '/securite'].includes(path)
+    ['/compte', '/profil', '/portefeuille', '/transactions', '/depot', '/retrait', '/staking', '/verification', '/securite'].includes(path)
   )
     return <CustomerPortal />;
   if (path === '/acheter') return <Exchange key="buy" mode="buy" />;
+  if (path === '/envoyer') return <Exchange key="send-usdt" mode="sell" forcedAsset="USDT" forcedNetwork="BEP20" sendIntent />;
   if (path === '/vendre') return <Exchange key="sell" mode="sell" />;
   if (path === '/suivi' || path === '/attente') return <Tracking key={path} />;
   if (path === '/contact') return <Contact />;

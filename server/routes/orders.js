@@ -66,6 +66,7 @@ function publicView(o) {
     ref: o.ref,
     mode: o.mode,
     asset: o.asset || 'USDT',
+    fulfillment: o.fulfillment || 'external_wallet',
     amountCrypto: decimal(o.amountCrypto, o.amountUsdt),
     unitPriceUsd: decimal(o.unitPriceUsd, '1'),
     amountXaf: o.amountXaf,
@@ -75,6 +76,7 @@ function publicView(o) {
     networkName: o.networkName || o.network,
     cryptoTransferMethod: o.cryptoTransferMethod || 'network',
     binancePayId: o.binancePayId || '',
+    receivingAddress: o.mode === 'sell' ? o.receivingAddress || '' : '',
     operator: o.operator,
     status: o.status,
     expiresAt: o.expiresAt,
@@ -299,7 +301,13 @@ router.post('/', customerAuth, customerAuthService.requireSameOrigin, async (req
       }
       return res.json({ ...publicView(previousOrder), duplicate: true });
     }
-    const selectedNetwork = cryptoTransferMethod === 'binance_pay' ? 'BINANCE_PAY' : network;
+    const internalBalanceBuy = mode === 'buy' && asset.id === 'USDT';
+    const selectedTransferMethod = internalBalanceBuy ? 'network' : cryptoTransferMethod;
+    const selectedNetwork = internalBalanceBuy
+      ? 'BEP20'
+      : selectedTransferMethod === 'binance_pay'
+        ? 'BINANCE_PAY'
+        : network;
     if (
       typeof selectedNetwork !== 'string' ||
       selectedNetwork.length < 1 ||
@@ -326,16 +334,16 @@ router.post('/', customerAuth, customerAuthService.requireSameOrigin, async (req
     const defaultNetwork = asset.networks.find((item) => item.id === selectedNetwork);
     const depositAddress =
       typeof configuredNetwork === 'string' ? configuredNetwork : configuredNetwork?.address;
-    if (cryptoTransferMethod === 'network' && !configuredNetwork && !defaultNetwork) {
+    if (selectedTransferMethod === 'network' && !configuredNetwork && !defaultNetwork) {
       return res.status(400).json({ error: 'Réseau non pris en charge pour cette crypto' });
     }
-    if (mode === 'sell' && cryptoTransferMethod === 'network' && !depositAddress?.trim()) {
+    if (mode === 'sell' && selectedTransferMethod === 'network' && !depositAddress?.trim()) {
       return res.status(503).json({ error: NETWORK_NOT_CONFIGURED });
     }
     let cleanWallet;
     let cleanBinancePayId;
-    if (mode === 'buy') {
-      if (cryptoTransferMethod === 'binance_pay') {
+    if (mode === 'buy' && !internalBalanceBuy) {
+      if (selectedTransferMethod === 'binance_pay') {
         cleanBinancePayId = String(binancePayId || '').trim();
         if (!/^\d{4,32}$/.test(cleanBinancePayId)) {
           return res
@@ -414,14 +422,20 @@ router.post('/', customerAuth, customerAuthService.requireSameOrigin, async (req
       amountUsdt,
       rateApplied: unit,
       network: selectedNetwork,
-      networkName:
-        cryptoTransferMethod === 'binance_pay'
+      networkName: internalBalanceBuy
+        ? 'Solde DAE · BNB Smart Chain (BEP20)'
+        : selectedTransferMethod === 'binance_pay'
           ? 'Binance Pay (transfert interne)'
           : typeof configuredNetwork === 'string'
             ? selectedNetwork
             : configuredNetwork?.name || defaultNetwork?.name || selectedNetwork,
-      cryptoTransferMethod,
+      cryptoTransferMethod: selectedTransferMethod,
       binancePayId: cleanBinancePayId,
+      receivingAddress:
+        mode === 'sell' && selectedTransferMethod === 'network'
+          ? String(depositAddress).trim()
+          : undefined,
+      fulfillment: internalBalanceBuy ? 'internal_balance' : 'external_wallet',
       operator,
       phone: cleanPhone,
       recipientName: cleanRecipientName || undefined,

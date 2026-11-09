@@ -1,7 +1,8 @@
 'use strict';
 
 const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
+const envFile = process.env.DAE_LOCAL_ENV === 'true' ? '.env.local' : '.env';
+require('dotenv').config({ path: path.join(__dirname, '..', '..', envFile) });
 
 const ALLOWED_ASSETS = ['USDT', 'BTC', 'POL', 'ETH', 'SOL'];
 const ALLOWED_NETWORKS = new Set([
