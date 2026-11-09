@@ -46,6 +46,7 @@ No address is marked active until a production signer has derived it, a chain wa
 - Withdrawals reserve funds first, require KYC and risk checks, use step-up authentication and a review policy, then enter a signer queue. Broadcast and finality are distinct states.
 - Staking remains unavailable until a specific protocol, custody arrangement, validator/counterparty, lock/unbonding schedule, reward source, fee policy and customer disclosures are approved.
 - Default-deny all money-moving capabilities. A UI button or a database flag alone must never activate signing, crediting, withdrawals or staking.
+- KYC approval follows an audited `not_started → pending → approved/rejected` workflow. Approval requires an internal reference to the identity file reviewed through DAE's existing process; the application stores the reference and decision reason, never the identity scan or document number.
 
 ## Required before live custody
 

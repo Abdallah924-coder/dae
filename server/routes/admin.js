@@ -249,9 +249,13 @@ router.patch('/customers/:id/kyc', async (req, res, next) => {
   const customerId = req.params.id;
   const targetStatus = String(req.body?.status || '');
   const reason = String(req.body?.reason || '').trim();
+  const evidenceReference = String(req.body?.evidenceReference || '').trim();
   if (!mongoose.isValidObjectId(customerId)) return res.status(400).json({ error: 'Identifiant de compte invalide.' });
   if (!['pending', 'approved', 'rejected'].includes(targetStatus)) return res.status(400).json({ error: 'Statut KYC invalide.' });
   if (reason.length < 8 || reason.length > 300) return res.status(400).json({ error: 'Le motif doit contenir entre 8 et 300 caractères.' });
+  if (targetStatus === 'approved' && (evidenceReference.length < 3 || evidenceReference.length > 120)) {
+    return res.status(400).json({ error: 'Une référence interne au dossier vérifié est requise pour approuver le KYC.' });
+  }
   if (targetStatus === 'approved') {
     const contactVerified = await Customer.exists({ _id: customerId, status: 'active', emailVerifiedAt: { $ne: null }, phoneVerifiedAt: { $ne: null } });
     if (!contactVerified) return res.status(409).json({ error: 'Le compte doit être actif avec e-mail et téléphone confirmés.' });
@@ -263,6 +267,13 @@ router.patch('/customers/:id/kyc', async (req, res, next) => {
     await session.withTransaction(async () => {
       const current = await Customer.findById(customerId).select('kycStatus').session(session).lean();
       if (!current) return;
+      const allowedTransitions = {
+        not_started: ['pending'],
+        pending: ['approved', 'rejected'],
+        rejected: ['pending'],
+        approved: ['rejected'],
+      };
+      if (!allowedTransitions[current.kycStatus]?.includes(targetStatus)) throw new Error('KYC_STATE_CONFLICT');
       updatedCustomer = await Customer.findOneAndUpdate(
         { _id: customerId, kycStatus: current.kycStatus },
         { $set: { kycStatus: targetStatus, kycReviewNote: reason } },
@@ -272,6 +283,7 @@ router.patch('/customers/:id/kyc', async (req, res, next) => {
       await CustomerKycAuditEvent.create([{
         customerId, actor: process.env.ADMIN_EMAIL?.trim().toLowerCase() || 'admin',
         fromStatus: current.kycStatus, toStatus: targetStatus, reason,
+        evidenceReference: targetStatus === 'approved' ? evidenceReference : null,
       }], { session });
     });
     if (!updatedCustomer) return res.status(404).json({ error: 'Compte client introuvable.' });
@@ -291,7 +303,7 @@ router.get('/customers/:id/kyc-audit', async (req, res, next) => {
   try {
     if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ error: 'Identifiant de compte invalide.' });
     const events = await CustomerKycAuditEvent.find({ customerId: req.params.id })
-      .select('actor fromStatus toStatus reason createdAt').sort({ createdAt: -1 }).limit(50).lean();
+      .select('actor fromStatus toStatus reason evidenceReference createdAt').sort({ createdAt: -1 }).limit(50).lean();
     return res.json({ events });
   } catch (error) { return next(error); }
 });

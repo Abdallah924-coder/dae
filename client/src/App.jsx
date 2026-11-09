@@ -3274,7 +3274,12 @@ function Admin() {
   }
   async function updateCustomerKyc(customer, status) {
     if (customerActionId) return;
-    const verb = status === 'approved' ? 'approuver' : status === 'rejected' ? 'refuser' : 'remettre en revue';
+    const verb = status === 'approved' ? 'approuver' : status === 'rejected' ? 'refuser ou révoquer' : 'démarrer la revue';
+    let evidenceReference = '';
+    if (status === 'approved') {
+      evidenceReference = window.prompt('Référence interne du dossier d’identité déjà vérifié (ne saisissez pas de numéro de pièce ici) :') || '';
+      if (evidenceReference.trim().length < 3) return notify('La référence interne du dossier est requise pour approuver.', true);
+    }
     const reason = window.prompt(`Motif de décision pour ${verb} le KYC de ${customer.firstName} ${customer.lastName} :`);
     if (reason === null) return;
     if (reason.trim().length < 8) return notify('Le motif doit contenir au moins 8 caractères.', true);
@@ -3282,7 +3287,7 @@ function Admin() {
     try {
       await api(`/api/admin/customers/${encodeURIComponent(customer._id)}/kyc`, {
         method: 'PATCH', admin: true,
-        body: JSON.stringify({ status, reason: reason.trim() }),
+        body: JSON.stringify({ status, reason: reason.trim(), evidenceReference: evidenceReference.trim() || undefined }),
       });
       await loadCustomers();
       notify('Décision KYC enregistrée dans le journal.');
@@ -3304,11 +3309,15 @@ function Admin() {
     setCustomerAuditEvents([]);
     setCustomerAuditLoading(true);
     try {
-      const result = await api(`/api/admin/customers/${encodeURIComponent(customerId)}/audit`, {
-        admin: true,
-      });
+      const [accessAudit, kycAudit] = await Promise.all([
+        api(`/api/admin/customers/${encodeURIComponent(customerId)}/audit`, { admin: true }),
+        api(`/api/admin/customers/${encodeURIComponent(customerId)}/kyc-audit`, { admin: true }),
+      ]);
       if (requestId === customerAuditRequestId.current) {
-        setCustomerAuditEvents(result.events || []);
+        setCustomerAuditEvents([
+          ...(accessAudit.events || []).map((event) => ({ ...event, eventType: 'access' })),
+          ...(kycAudit.events || []).map((event) => ({ ...event, eventType: 'kyc' })),
+        ].sort((left, right) => new Date(right.createdAt) - new Date(left.createdAt)));
       }
     } catch (requestError) {
       if (requestId === customerAuditRequestId.current) notify(requestError.message, true);
@@ -4009,11 +4018,17 @@ function Admin() {
                               }[customer.kycStatus] || customer.kycStatus}
                             </span>
                             <div className="customer-kyc-actions">
-                              {customer.kycStatus !== 'approved' && (
-                                <button className="button button-outline compact" disabled={customerActionId === String(customer._id) || customer.status !== 'active' || !customer.emailVerifiedAt || !customer.phoneVerifiedAt} onClick={() => updateCustomerKyc(customer, 'approved')}>Approuver</button>
+                              {['not_started', 'rejected'].includes(customer.kycStatus) && (
+                                <button className="button button-outline compact" disabled={customerActionId === String(customer._id)} onClick={() => updateCustomerKyc(customer, 'pending')}>Démarrer la revue</button>
                               )}
-                              {customer.kycStatus !== 'rejected' && (
-                                <button className="button button-outline compact" disabled={customerActionId === String(customer._id)} onClick={() => updateCustomerKyc(customer, 'rejected')}>Refuser</button>
+                              {customer.kycStatus === 'pending' && (
+                                <>
+                                  <button className="button button-outline compact" disabled={customerActionId === String(customer._id) || customer.status !== 'active' || !customer.emailVerifiedAt || !customer.phoneVerifiedAt} onClick={() => updateCustomerKyc(customer, 'approved')}>Approuver</button>
+                                  <button className="button button-outline compact" disabled={customerActionId === String(customer._id)} onClick={() => updateCustomerKyc(customer, 'rejected')}>Refuser</button>
+                                </>
+                              )}
+                              {customer.kycStatus === 'approved' && (
+                                <button className="button button-outline compact" disabled={customerActionId === String(customer._id)} onClick={() => updateCustomerKyc(customer, 'rejected')}>Révoquer</button>
                               )}
                             </div>
                           </td>
@@ -4044,12 +4059,15 @@ function Admin() {
                             {customerAuditId === String(customer._id) && (
                               <div className="customer-audit-inline" aria-live="polite">
                                 {customerAuditLoading ? 'Chargement du journal…' : customerAuditEvents.length ? customerAuditEvents.map((event) => (
-                                  <article key={`${event.action}-${event.createdAt}`}>
-                                    <strong>{event.action === 'account_locked' ? 'Compte suspendu' : 'Compte réactivé'}</strong>
+                                  <article key={`${event.eventType}-${event.createdAt}`}>
+                                    <strong>{event.eventType === 'kyc'
+                                      ? `KYC : ${{ not_started: 'non démarré', pending: 'en revue', approved: 'approuvé', rejected: 'refusé' }[event.toStatus] || event.toStatus}`
+                                      : event.action === 'account_locked' ? 'Compte suspendu' : 'Compte réactivé'}</strong>
                                     <small>{new Date(event.createdAt).toLocaleString('fr-FR')} · {event.actor}</small>
+                                    {event.evidenceReference && <small>Référence dossier : {event.evidenceReference}</small>}
                                     <p>{event.reason}</p>
                                   </article>
-                                )) : 'Aucune action d’accès enregistrée.'}
+                                )) : 'Aucune action enregistrée.'}
                               </div>
                             )}
                           </td>
