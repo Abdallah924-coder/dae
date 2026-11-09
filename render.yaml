@@ -79,3 +79,67 @@ services:
         value: "0.003"
       - key: BSC_WITHDRAWAL_FRESH_AUTH_MINUTES
         value: "10"
+
+  - type: worker
+    name: dae-bsc-deposit-indexer
+    runtime: node
+    plan: starter
+    buildCommand: npm ci
+    startCommand: npm run bsc:deposits
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGODB_URI
+        sync: false
+      - key: BSC_RPC_URL
+        sync: false
+      - key: BSC_CHAIN_ID
+        value: "56"
+      - key: BSC_USDT_CONTRACT
+        value: 0x55d398326f99059ff775485246999027b3197955
+      - key: BSC_HD_XPUB
+        sync: false
+      - key: BSC_CONFIRMATIONS
+        value: "15"
+      - key: BSC_SCAN_INTERVAL_MS
+        value: "15000"
+      - key: BSC_START_BLOCK
+        sync: false
+      - key: BSC_DEPOSITS_ENABLED
+        value: "true"
+
+  - type: worker
+    name: dae-bsc-signer
+    runtime: node
+    plan: starter
+    buildCommand: npm ci
+    startCommand: npm run bsc:signer
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGODB_URI
+        sync: false
+      - key: BSC_RPC_URL
+        sync: false
+      - key: BSC_CHAIN_ID
+        value: "56"
+      - key: BSC_USDT_CONTRACT
+        value: 0x55d398326f99059ff775485246999027b3197955
+      - key: BSC_MASTER_ADDRESS
+        sync: false
+      - key: BSC_GAS_ADDRESS
+        sync: false
+      - key: BSC_WITHDRAWALS_ENABLED
+        value: "false"
+      - key: BSC_SWEEPS_ENABLED
+        value: "false"
+      - key: BSC_MASTER_DERIVATION_PATH
+        value: "m/44'/60'/1'/0/0"
+      - key: BSC_GAS_DERIVATION_PATH
+        value: "m/44'/60'/2'/0/0"
+      - key: BSC_CUSTOMER_DERIVATION_PATH
+        value: "m/44'/60'/0'/0"
+      - key: BSC_GAS_TOPUP_BNB
+        value: "0.003"
+      - key: BSC_SIGNER_MNEMONIC
+        sync: false
