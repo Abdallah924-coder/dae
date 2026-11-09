@@ -1,6 +1,7 @@
 'use strict';
 
 const mongoose = require('mongoose');
+const marketAssets = require('../config/marketAssets');
 
 const challengeSchema = new mongoose.Schema(
   {
@@ -53,7 +54,7 @@ const customerSchema = new mongoose.Schema(
       sparse: true,
     },
     watchlist: {
-      type: [{ type: String, enum: ['USDT', 'BTC', 'POL', 'ETH', 'SOL'] }],
+      type: [{ type: String, enum: marketAssets.map((asset) => asset.id) }],
       default: [],
       validate: (items) => items.length <= 5 && new Set(items).size === items.length,
     },

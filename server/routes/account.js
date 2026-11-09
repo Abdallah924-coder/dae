@@ -16,6 +16,7 @@ const Withdrawal = require('../models/Withdrawal');
 const StakePosition = require('../models/StakePosition');
 const customerAuth = require('../middleware/customerAuth');
 const cryptoAssets = require('../config/cryptoAssets');
+const marketAssets = require('../config/marketAssets');
 const { customerVerificationCode } = require('../services/email');
 const { normalizePhoneNumber, sendSMS } = require('../services/infobip');
 const auth = require('../services/customerAuth');
@@ -754,7 +755,7 @@ router.get('/watchlist', customerAuth, (req, res) => {
 router.put('/watchlist', customerAuth, auth.requireSameOrigin, async (req, res, next) => {
   try {
     const assets = req.body?.assets;
-    const allowedAssets = new Set(cryptoAssets.map((asset) => asset.id));
+    const allowedAssets = new Set(marketAssets.map((asset) => asset.id));
     if (
       !Array.isArray(assets) ||
       assets.length > allowedAssets.size ||

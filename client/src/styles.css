@@ -2676,6 +2676,12 @@ td small {
   color: white;
   background: #087763;
 }
+.market-reference-only {
+  color: var(--muted, #75827a);
+  font-size: 10px;
+  font-weight: 650;
+  white-space: nowrap;
+}
 .market-empty {
   margin: 0;
   padding: 28px;
@@ -3894,6 +3900,12 @@ body {
 .customer-market-actions a:first-child {
   border-color: #d2e8bb;
   background: #f2f8e9;
+}
+.customer-market-actions span {
+  color: var(--muted, #75827a);
+  font-size: 10px;
+  font-weight: 650;
+  white-space: nowrap;
 }
 .customer-market-empty {
   padding: 18px 22px;

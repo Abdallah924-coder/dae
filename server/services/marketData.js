@@ -1,4 +1,4 @@
-const assets = require('../config/cryptoAssets');
+const assets = require('../config/marketAssets');
 
 let cachedPrices;
 let cachedAt = 0;
@@ -31,12 +31,13 @@ async function fetchCoinPaprikaPrices() {
       name: asset.name,
       priceUsd: quote?.price ?? null,
       change24h: quote?.percent_change_24h ?? null,
+      tradeEnabled: asset.tradeEnabled,
     };
   });
-  if (markets.some((market) => !Number.isFinite(market.priceUsd) || market.priceUsd <= 0)) {
+  if (markets.some((market) => market.tradeEnabled && (!Number.isFinite(market.priceUsd) || market.priceUsd <= 0))) {
     throw new Error('CoinPaprika n’a pas fourni tous les cours demandés en USD');
   }
-  return markets;
+  return markets.filter((market) => Number.isFinite(market.priceUsd) && market.priceUsd > 0);
 }
 
 async function fetchCoinGeckoPrices() {
@@ -55,11 +56,12 @@ async function fetchCoinGeckoPrices() {
     name: asset.name,
     priceUsd: data[asset.coinGeckoId]?.usd ?? null,
     change24h: data[asset.coinGeckoId]?.usd_24h_change ?? null,
+    tradeEnabled: asset.tradeEnabled,
   }));
-  if (markets.some((market) => !Number.isFinite(market.priceUsd) || market.priceUsd <= 0)) {
+  if (markets.some((market) => market.tradeEnabled && (!Number.isFinite(market.priceUsd) || market.priceUsd <= 0))) {
     throw new Error('CoinGecko n’a pas fourni tous les cours demandés en USD');
   }
-  return markets;
+  return markets.filter((market) => Number.isFinite(market.priceUsd) && market.priceUsd > 0);
 }
 
 async function fetchMarketPrices() {
@@ -138,38 +140,31 @@ async function getMarketPrices({ allowStale = true } = {}) {
 }
 
 async function fetchMarketHistory(asset) {
-  const end = new Date();
-  const start = new Date(end.getTime() - 24 * 60 * 60_000);
-  const query = new URLSearchParams({
-    start: start.toISOString(),
-    end: end.toISOString(),
-    interval: '1h',
-    limit: '32',
-    quote: 'usd',
-  });
+  const query = new URLSearchParams({ vs_currency: 'usd', days: '1' });
   const response = await fetch(
-    `https://api.coinpaprika.com/v1/tickers/${encodeURIComponent(asset.coinPaprikaId)}/historical?${query}`,
+    `https://api.coingecko.com/api/v3/coins/${encodeURIComponent(asset.coinGeckoId)}/market_chart?${query}`,
     { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(12000) },
   );
-  if (!response.ok) {
-    throw new Error(`CoinPaprika a répondu avec le statut ${response.status}`);
-  }
-  const observations = await response.json();
-  if (!Array.isArray(observations)) throw new Error('Historique de marché invalide');
-  const points = observations
-    .map((item) => ({ timestamp: Date.parse(item.timestamp), priceUsd: Number(item.price) }))
+  if (!response.ok) throw new Error(`CoinGecko a répondu avec le statut ${response.status}`);
+  const chart = await response.json();
+  if (!Array.isArray(chart.prices)) throw new Error('Historique de marché invalide');
+  const observations = chart.prices
+    .map(([timestamp, priceUsd]) => ({ timestamp: Number(timestamp), priceUsd: Number(priceUsd) }))
     .filter(
       (point) =>
         Number.isFinite(point.timestamp) && Number.isFinite(point.priceUsd) && point.priceUsd > 0,
     )
     .sort((left, right) => left.timestamp - right.timestamp);
+  const hourly = new Map();
+  for (const point of observations) hourly.set(Math.floor(point.timestamp / 3_600_000) * 3_600_000, point.priceUsd);
+  const points = [...hourly.entries()].map(([timestamp, priceUsd]) => ({ timestamp, priceUsd }));
   if (points.length < 2) throw new Error('Historique insuffisant pour tracer le marché');
   return {
     asset: asset.id,
     name: asset.name,
     range: '24h',
     points,
-    source: 'CoinPaprika',
+    source: 'CoinGecko',
     fetchedAt: new Date(),
     stale: Date.now() - points[points.length - 1].timestamp > 90 * 60_000,
   };

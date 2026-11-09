@@ -48,6 +48,18 @@ const assetsFallback = [
     ],
   },
 ];
+const marketAssetsFallback = [
+  ...assetsFallback.map(({ id, name }) => ({ id, name })),
+  { id: 'BNB', name: 'BNB' },
+  { id: 'XRP', name: 'XRP' },
+  { id: 'ADA', name: 'Cardano' },
+  { id: 'DOGE', name: 'Dogecoin' },
+  { id: 'TRX', name: 'TRON' },
+  { id: 'LTC', name: 'Litecoin' },
+  { id: 'AVAX', name: 'Avalanche' },
+  { id: 'LINK', name: 'Chainlink' },
+  { id: 'DOT', name: 'Polkadot' },
+];
 const statusNames = {
   created: 'En attente',
   payment_declared: 'Paiement déclaré',
@@ -379,7 +391,7 @@ function MarketHistoryChart({ assetId, markets }) {
       <div className="market-history-footer">
         <span>
           Prix agrégé indicatif en USD · observations horaires · source{' '}
-          {history?.source || 'CoinPaprika'}.
+          {history?.source || 'CoinGecko'}.
         </span>
         <span className={change == null ? '' : change >= 0 ? 'positive' : 'negative'}>
           Variation observée{' '}
@@ -400,7 +412,7 @@ function Home() {
   const [watchlist, setWatchlist] = useState(() => {
     try {
       const saved = JSON.parse(localStorage.getItem('dae-market-watchlist') || '[]');
-      return Array.isArray(saved) ? saved.filter((asset) => assetsFallback.some((item) => item.id === asset)) : [];
+      return Array.isArray(saved) ? saved.filter((asset) => marketAssetsFallback.some((item) => item.id === asset)) : [];
     } catch { return []; }
   });
   const watchlistRef = useRef(watchlist);
@@ -499,7 +511,7 @@ function Home() {
     const matchQuery = `${m.asset} ${m.name}`.toLowerCase().includes(query.trim().toLowerCase());
     const matchTab =
       marketTab === 'Tous' ||
-      (marketTab === 'Populaires' && ['BTC', 'ETH', 'USDT'].includes(m.asset)) ||
+      (marketTab === 'Populaires' && ['BTC', 'ETH', 'BNB', 'XRP', 'SOL'].includes(m.asset)) ||
       (marketTab === 'Stablecoins' && m.asset === 'USDT') ||
       (marketTab === 'Favoris' && watchlist.includes(m.asset));
     return matchQuery && matchTab;
@@ -670,10 +682,12 @@ function Home() {
                       </span>
                     </td>
                     <td>
-                      <div className="market-actions">
-                        <Link to={`/acheter?asset=${m.asset}`}>Acheter</Link>
-                        <Link to={`/vendre?asset=${m.asset}`}>Vendre</Link>
-                      </div>
+                      {m.tradeEnabled ? (
+                        <div className="market-actions">
+                          <Link to={`/acheter?asset=${m.asset}`}>Acheter</Link>
+                          <Link to={`/vendre?asset=${m.asset}`}>Vendre</Link>
+                        </div>
+                      ) : <span className="market-reference-only">Cours indicatif</span>}
                     </td>
                   </tr>
                 ))}
@@ -699,7 +713,7 @@ function Home() {
                 value={selectedChartAsset}
                 onChange={(event) => setSelectedChartAsset(event.target.value)}
               >
-                {assetsFallback.map((item) => (
+                {(markets.length ? markets : marketAssetsFallback).map((item) => (
                   <option value={item.id} key={item.id}>
                     {item.id} · {item.name}
                   </option>
@@ -2671,12 +2685,16 @@ function CustomerPortal() {
                               : '—'}
                           </span>
                           <div className="customer-market-actions">
-                            <Link to={`/acheter?asset=${encodeURIComponent(market.asset)}`}>
-                              Acheter
-                            </Link>
-                            <Link to={`/vendre?asset=${encodeURIComponent(market.asset)}`}>
-                              Vendre
-                            </Link>
+                            {market.tradeEnabled ? (
+                              <>
+                                <Link to={`/acheter?asset=${encodeURIComponent(market.asset)}`}>
+                                  Acheter
+                                </Link>
+                                <Link to={`/vendre?asset=${encodeURIComponent(market.asset)}`}>
+                                  Vendre
+                                </Link>
+                              </>
+                            ) : <span>Cours indicatif</span>}
                           </div>
                         </article>
                       );
