@@ -18,7 +18,7 @@ services:
       - key: ADMIN_SESSION_SECRET
         sync: false
       - key: PUBLIC_APP_URL
-        sync: false
+        value: https://dae-1lpj.onrender.com
       - key: BREVO_API_KEY
         sync: false
       - key: BREVO_SENDER_EMAIL
