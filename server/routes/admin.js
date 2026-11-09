@@ -56,14 +56,6 @@ function configuredNetworks(config, asset) {
   return asset.networks.map((network) => ({ ...network, address: '' }));
 }
 
-function hasPublicHttpsUrl(value) {
-  try {
-    return new URL(String(value || '').trim()).protocol === 'https:';
-  } catch {
-    return false;
-  }
-}
-
 function mongoTransactionsReady() {
   return supportsMultiDocumentTransactions(mongoose.connection);
 }
@@ -339,15 +331,9 @@ router.get('/readiness', async (_req, res, next) => {
     process.env.INFOBIP_API_KEY?.trim() && process.env.INFOBIP_SENDER?.trim(),
   );
   const authSecretReady = (process.env.CUSTOMER_AUTH_SECRET || '').length >= 32;
-  const legalDocumentsReady = Boolean(
-    process.env.CUSTOMER_LEGAL_REVIEWED === 'true' &&
-    process.env.CUSTOMER_TERMS_VERSION?.trim() &&
-    process.env.CUSTOMER_PRIVACY_VERSION?.trim() &&
-    hasPublicHttpsUrl(process.env.CUSTOMER_TERMS_URL) &&
-    hasPublicHttpsUrl(process.env.CUSTOMER_PRIVACY_URL),
-  );
+  const legalReviewReady = process.env.CUSTOMER_LEGAL_REVIEWED === 'true';
   const accountRegistrationReady =
-    emailReady && smsReady && authSecretReady && legalDocumentsReady && customerAuthService.publicAppOriginReady();
+    emailReady && smsReady && authSecretReady && legalReviewReady && customerAuthService.publicAppOriginReady();
   res.set('Cache-Control', 'no-store');
   const bsc = bscConfigStatus();
   const signerHeartbeat = await BscSignerHeartbeat.findOne({ name: 'local-bsc-signer', chainId: 56 }).select('lastSeenAt masterAddress gasAddress').lean();
@@ -375,7 +361,7 @@ router.get('/readiness', async (_req, res, next) => {
       sms: smsReady,
       sessionSecret: authSecretReady,
       publicAppOrigin: customerAuthService.publicAppOriginReady(),
-      legalDocuments: legalDocumentsReady,
+      legalReview: legalReviewReady,
     },
     database: { transactions: mongoTransactionsReady() },
     identity: { enabled: true, status: 'manual_admin_review' },

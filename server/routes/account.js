@@ -89,11 +89,7 @@ function mongoTransactionsReady() {
 function authProvidersReady() {
   return Boolean(
     authChannelsReady() &&
-    process.env.CUSTOMER_LEGAL_REVIEWED === 'true' &&
-    process.env.CUSTOMER_TERMS_VERSION?.trim() &&
-    process.env.CUSTOMER_PRIVACY_VERSION?.trim() &&
-    publicPolicyUrl(process.env.CUSTOMER_TERMS_URL) &&
-    publicPolicyUrl(process.env.CUSTOMER_PRIVACY_URL),
+    process.env.CUSTOMER_LEGAL_REVIEWED === 'true',
   );
 }
 
@@ -248,10 +244,6 @@ router.get('/features', async (_req, res, next) => {
         publicAppOrigin: auth.publicAppOriginReady(),
         mongoTransactions: mongoTransactionsReady(),
         legalReview: process.env.CUSTOMER_LEGAL_REVIEWED === 'true',
-        termsVersion: Boolean(process.env.CUSTOMER_TERMS_VERSION?.trim()),
-        privacyVersion: Boolean(process.env.CUSTOMER_PRIVACY_VERSION?.trim()),
-        termsUrl: Boolean(publicPolicyUrl(process.env.CUSTOMER_TERMS_URL)),
-        privacyUrl: Boolean(publicPolicyUrl(process.env.CUSTOMER_PRIVACY_URL)),
       },
       policies: {
         termsUrl: publicPolicyUrl(process.env.CUSTOMER_TERMS_URL),
@@ -332,8 +324,8 @@ router.post('/register', authLimiter, auth.requireSameOrigin, async (req, res, n
       existingCustomer.passwordSalt = credentials.salt;
       existingCustomer.termsAcceptedAt = new Date();
       existingCustomer.privacyAcceptedAt = new Date();
-      existingCustomer.termsVersion = process.env.CUSTOMER_TERMS_VERSION.trim();
-      existingCustomer.privacyVersion = process.env.CUSTOMER_PRIVACY_VERSION.trim();
+      existingCustomer.termsVersion = process.env.CUSTOMER_TERMS_VERSION?.trim() || null;
+      existingCustomer.privacyVersion = process.env.CUSTOMER_PRIVACY_VERSION?.trim() || null;
       const codes = createChallenges(existingCustomer);
       await existingCustomer.save();
       await ensureWalletPlaceholders(existingCustomer);
@@ -360,8 +352,8 @@ router.post('/register', authLimiter, auth.requireSameOrigin, async (req, res, n
       passwordSalt: credentials.salt,
       termsAcceptedAt: new Date(),
       privacyAcceptedAt: new Date(),
-      termsVersion: process.env.CUSTOMER_TERMS_VERSION.trim(),
-      privacyVersion: process.env.CUSTOMER_PRIVACY_VERSION.trim(),
+      termsVersion: process.env.CUSTOMER_TERMS_VERSION?.trim() || null,
+      privacyVersion: process.env.CUSTOMER_PRIVACY_VERSION?.trim() || null,
       status: 'pending_verification',
       walletAccountIndex: accountIndex,
     });

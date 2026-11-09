@@ -1870,8 +1870,7 @@ function AccountAccess({ initialMode = 'login' }) {
             <div className="account-gate" role="status">
               <strong>Les inscriptions ne sont pas encore activées.</strong>
               <span>
-                DAE doit configurer l’e-mail/SMS et publier les conditions et la politique de
-                confidentialité approuvées avant d’ouvrir l’inscription.
+                DAE doit terminer la configuration des codes de vérification par e-mail et SMS.
               </span>
             </div>
           )}
