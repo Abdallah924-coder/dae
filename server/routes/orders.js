@@ -270,6 +270,10 @@ router.post('/', customerAuth, customerAuthService.requireSameOrigin, async (req
     const asset = assets.find((item) => item.id === assetId);
     const cryptoTransferMethod = requestedTransferMethod || 'network';
 
+    if (!req.customer.phoneVerifiedAt) {
+      return res.status(403).json({ error: 'Confirmez votre numéro de téléphone depuis votre compte avant de passer une commande.' });
+    }
+
     if (!['buy', 'sell'].includes(mode)) return res.status(400).json({ error: 'Mode invalide' });
     if (!asset) return res.status(400).json({ error: 'Crypto invalide' });
     if ((typeof amount !== 'string' && typeof amount !== 'number') || !String(amount).trim())

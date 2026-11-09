@@ -1796,7 +1796,7 @@ function AccountAccess({ initialMode = 'login' }) {
           body: JSON.stringify(form),
         });
         setStage(2);
-        setMessage('Codes envoyés. Vérifie ton e-mail et ton téléphone.');
+        setMessage('Un code a été envoyé par e-mail.');
       } else if (registerMode) {
         await api('/api/account/verify', {
           method: 'POST',
@@ -1827,7 +1827,7 @@ function AccountAccess({ initialMode = 'login' }) {
       if (registerMode && stage === 1 && requestError.data?.accountCreated) {
         setStage(2);
         setMessage(
-          'Compte créé. Un canal de vérification est indisponible : réessaie l’envoi des codes.',
+          'Compte créé. Le code e-mail n’a pas pu être envoyé : réessaie.',
         );
       }
     } finally {
@@ -1841,7 +1841,7 @@ function AccountAccess({ initialMode = 'login' }) {
     try {
       await api('/api/account/resend-code', {
         method: 'POST',
-        body: JSON.stringify({ email: form.email, phone: form.phone }),
+        body: JSON.stringify({ email: form.email }),
       });
       setMessage('Si le compte attend une vérification, de nouveaux codes ont été envoyés.');
     } catch (requestError) {
@@ -1866,7 +1866,7 @@ function AccountAccess({ initialMode = 'login' }) {
             <h1>
               {stage === 2
                 ? registerMode
-                  ? 'Vérifions tes coordonnées.'
+                  ? 'Confirme ton adresse e-mail.'
                   : 'Confirme cette connexion.'
                 : registerMode
                   ? 'Commence avec DAE.'
@@ -1874,7 +1874,9 @@ function AccountAccess({ initialMode = 'login' }) {
             </h1>
             <p>
               {stage === 2
-                ? 'Entre les codes à six chiffres reçus séparément par e-mail et SMS.'
+                ? registerMode
+                  ? 'Entre le code à six chiffres reçu par e-mail pour activer ton compte.'
+                  : 'Entre les codes à six chiffres reçus par e-mail et SMS.'
                 : registerMode
                   ? 'Crée ton accès personnel. Tes coordonnées seront vérifiées avant toute activité du compte.'
                   : 'Connecte-toi avec ton e-mail, puis confirme avec les codes de sécurité.'}
@@ -1884,7 +1886,7 @@ function AccountAccess({ initialMode = 'login' }) {
             <div className="account-gate" role="status">
               <strong>Les inscriptions ne sont pas encore activées.</strong>
               <span>
-                DAE doit terminer la configuration des codes de vérification par e-mail et SMS.
+                DAE doit terminer la configuration de la vérification par e-mail.
               </span>
             </div>
           )}
@@ -1915,7 +1917,7 @@ function AccountAccess({ initialMode = 'login' }) {
                 </label>
               </div>
             )}
-            {(stage === 1 || registerMode) && (
+            {stage === 1 && (
               <>
                 <label className="field-label">
                   Adresse e-mail
@@ -1983,18 +1985,6 @@ function AccountAccess({ initialMode = 'login' }) {
             )}
             {stage === 2 && (
               <>
-                {registerMode && (
-                  <label className="field-label">
-                    Téléphone du compte
-                    <input
-                      required
-                      type="tel"
-                      autoComplete="tel"
-                      value={form.phone}
-                      onChange={(e) => update('phone', e.target.value)}
-                    />
-                  </label>
-                )}
                 <label className="field-label">
                   Code reçu par e-mail
                   <input
@@ -2008,7 +1998,7 @@ function AccountAccess({ initialMode = 'login' }) {
                     onChange={(e) => update('emailCode', e.target.value)}
                   />
                 </label>
-                <label className="field-label">
+                {!registerMode && <label className="field-label">
                   Code reçu par SMS
                   <input
                     required
@@ -2019,7 +2009,7 @@ function AccountAccess({ initialMode = 'login' }) {
                     value={form.phoneCode}
                     onChange={(e) => update('phoneCode', e.target.value)}
                   />
-                </label>
+                </label>}
               </>
             )}
             {registerMode && stage === 1 && (
@@ -2079,7 +2069,7 @@ function AccountAccess({ initialMode = 'login' }) {
                       : 'Continuer'}
               </button>
             )}
-            {stage === 2 && (
+            {stage === 2 && registerMode && (
               <button
                 type="button"
                 className="text-button account-resend"

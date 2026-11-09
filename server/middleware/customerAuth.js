@@ -20,8 +20,7 @@ module.exports = async function customerAuth(req, res, next) {
     if (
       !customer ||
       customer.status !== 'active' ||
-      !customer.emailVerifiedAt ||
-      !customer.phoneVerifiedAt
+      !customer.emailVerifiedAt
     ) {
       return res.status(403).json({ error: 'Ce compte ne peut pas accéder à la plateforme' });
     }

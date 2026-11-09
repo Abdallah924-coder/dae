@@ -333,7 +333,7 @@ router.get('/readiness', async (_req, res, next) => {
   const authSecretReady = (process.env.CUSTOMER_AUTH_SECRET || '').length >= 32;
   const legalReviewReady = process.env.CUSTOMER_LEGAL_REVIEWED === 'true';
   const accountRegistrationReady =
-    emailReady && smsReady && authSecretReady && legalReviewReady && customerAuthService.publicAppOriginReady();
+    emailReady && authSecretReady && legalReviewReady && customerAuthService.publicAppOriginReady();
   res.set('Cache-Control', 'no-store');
   const bsc = bscConfigStatus();
   const signerHeartbeat = await BscSignerHeartbeat.findOne({ name: 'local-bsc-signer', chainId: 56 }).select('lastSeenAt masterAddress gasAddress').lean();

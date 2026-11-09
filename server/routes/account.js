@@ -72,15 +72,21 @@ const challengeSelect = [
   '+phoneChallenge.attempts',
 ].join(' ');
 
-function authChannelsReady() {
+function authEmailReady() {
   return Boolean(
     (process.env.CUSTOMER_AUTH_SECRET || '').length >= 32 &&
     auth.publicAppOriginReady() &&
     process.env.BREVO_API_KEY?.trim() &&
-    process.env.BREVO_SENDER_EMAIL?.trim() &&
-    process.env.INFOBIP_API_KEY?.trim() &&
-    process.env.INFOBIP_SENDER?.trim(),
+    process.env.BREVO_SENDER_EMAIL?.trim(),
   );
+}
+
+function smsProviderReady() {
+  return Boolean(process.env.INFOBIP_API_KEY?.trim() && process.env.INFOBIP_SENDER?.trim());
+}
+
+function authChannelsReady() {
+  return authEmailReady() && smsProviderReady();
 }
 
 function mongoTransactionsReady() {
@@ -89,43 +95,34 @@ function mongoTransactionsReady() {
 
 function authProvidersReady() {
   return Boolean(
-    authChannelsReady() &&
+    authEmailReady() &&
     process.env.CUSTOMER_LEGAL_REVIEWED === 'true',
   );
 }
 
-function createChallenges(customer) {
+function createEmailChallenge(customer) {
   const emailCode = auth.makeOtp();
-  const phoneCode = auth.makeOtp();
-  const emailChallenge = {
+  customer.emailChallenge = {
     hash: auth.otpHash(customer._id, 'email', emailCode),
     expiresAt: new Date(Date.now() + challengeTtlMs),
     sentAt: new Date(),
     attempts: 0,
   };
-  const phoneChallenge = {
-    hash: auth.otpHash(customer._id, 'phone', phoneCode),
-    expiresAt: new Date(Date.now() + challengeTtlMs),
-    sentAt: new Date(),
-    attempts: 0,
-  };
-  customer.emailChallenge = emailChallenge;
-  customer.phoneChallenge = phoneChallenge;
-  return { emailCode, phoneCode };
+  customer.phoneChallenge = {};
+  return emailCode;
+}
+
+async function deliverEmailChallenge(customer, emailCode) {
+  await customerVerificationCode({ email: customer.email, code: emailCode });
 }
 
 async function deliverChallenges(customer, codes) {
   const [emailResult, smsResult] = await Promise.allSettled([
     customerVerificationCode({ email: customer.email, code: codes.emailCode }),
-    sendSMS(
-      customer.phone,
-      `Code DAE Crypto : ${codes.phoneCode}. Expire dans ${auth.OTP_MINUTES} minutes. Ne le partagez pas.`,
-    ),
+    sendSMS(customer.phone, `Code DAE Crypto : ${codes.phoneCode}. Expire dans ${auth.OTP_MINUTES} minutes. Ne le partagez pas.`),
   ]);
   if (emailResult.status === 'rejected' || smsResult.status === 'rejected') {
-    throw new Error(
-      'Un canal de vérification est indisponible. Réessayez ou contactez l’assistance.',
-    );
+    throw new Error('Un canal de vérification est indisponible. Réessayez ou contactez l’assistance.');
   }
 }
 
@@ -235,7 +232,7 @@ router.get('/features', async (_req, res, next) => {
   res.json({
     accounts: {
       registration: providersReady,
-      verification: authChannelsReady() ? ['email', 'sms'] : [],
+      verification: authEmailReady() ? ['email'] : [],
       status: providersReady ? 'ready' : 'configuration_required',
       recovery: authChannelsReady() && mongoTransactionsReady() && auth.publicAppOriginReady(),
       requirements: {
@@ -275,7 +272,7 @@ router.post('/register', authLimiter, auth.requireSameOrigin, async (req, res, n
     if (!authProvidersReady()) {
       return res.status(503).json({
         error:
-          'L’inscription reste fermée jusqu’à la configuration des canaux de vérification et des documents juridiques publiés et validés.',
+          'L’inscription est temporairement indisponible : la vérification par e-mail n’est pas configurée.',
       });
     }
     const firstName = String(req.body.firstName || '').trim();
@@ -327,11 +324,11 @@ router.post('/register', authLimiter, auth.requireSameOrigin, async (req, res, n
       existingCustomer.privacyAcceptedAt = new Date();
       existingCustomer.termsVersion = process.env.CUSTOMER_TERMS_VERSION?.trim() || null;
       existingCustomer.privacyVersion = process.env.CUSTOMER_PRIVACY_VERSION?.trim() || null;
-      const codes = createChallenges(existingCustomer);
+      const codes = { emailCode: createEmailChallenge(existingCustomer) };
       await existingCustomer.save();
       await ensureWalletPlaceholders(existingCustomer);
       try {
-        await deliverChallenges(existingCustomer, codes);
+        await deliverEmailChallenge(existingCustomer, codes.emailCode);
       } catch (deliveryError) {
         return res.status(503).json({ error: deliveryError.message, accountCreated: true });
       }
@@ -358,16 +355,16 @@ router.post('/register', authLimiter, auth.requireSameOrigin, async (req, res, n
       status: 'pending_verification',
       walletAccountIndex: accountIndex,
     });
-    const codes = createChallenges(customer);
+    const codes = { emailCode: createEmailChallenge(customer) };
     await customer.save();
     await ensureWalletPlaceholders(customer);
     try {
-      await deliverChallenges(customer, codes);
+      await deliverEmailChallenge(customer, codes.emailCode);
     } catch (deliveryError) {
       return res.status(503).json({ error: deliveryError.message, accountCreated: true });
     }
     res.status(201).json({
-      message: 'Codes envoyés. Vérifiez votre e-mail et votre téléphone pour activer le compte.',
+      message: 'Un code a été envoyé par e-mail. Confirmez votre adresse pour activer le compte.',
       expiresInSeconds: auth.OTP_MINUTES * 60,
     });
   } catch (error) {
@@ -380,13 +377,12 @@ router.post('/register', authLimiter, auth.requireSameOrigin, async (req, res, n
 router.post('/resend-code', resendLimiter, auth.requireSameOrigin, async (req, res, next) => {
   try {
     const email = normalizeEmail(req.body.email);
-    const phone = normalizePhone(req.body.phone);
-    if (!email || !phone) return res.status(400).json({ error: 'E-mail ou téléphone invalide.' });
-    const customer = await Customer.findOne({ email, phone }).select(challengeSelect);
-    if (customer && customer.status === 'pending_verification' && authChannelsReady()) {
-      const codes = createChallenges(customer);
+    if (!email) return res.status(400).json({ error: 'Adresse e-mail invalide.' });
+    const customer = await Customer.findOne({ email }).select(challengeSelect);
+    if (customer && customer.status === 'pending_verification' && authEmailReady()) {
+      const codes = { emailCode: createEmailChallenge(customer) };
       await customer.save();
-      await deliverChallenges(customer, codes);
+      await deliverEmailChallenge(customer, codes.emailCode);
     }
     res.status(202).json({
       message: 'Si le compte attend une vérification, de nouveaux codes ont été envoyés.',
@@ -399,37 +395,31 @@ router.post('/resend-code', resendLimiter, auth.requireSameOrigin, async (req, r
 router.post('/verify', authLimiter, auth.requireSameOrigin, async (req, res, next) => {
   try {
     const email = normalizeEmail(req.body.email);
-    const phone = normalizePhone(req.body.phone);
     const emailCode = String(req.body.emailCode || '').trim();
-    const phoneCode = String(req.body.phoneCode || '').trim();
     const now = new Date();
     const customer = await Customer.findOneAndUpdate(
       {
         email,
-        phone,
         status: 'pending_verification',
         'emailChallenge.expiresAt': { $gt: now },
-        'phoneChallenge.expiresAt': { $gt: now },
         'emailChallenge.attempts': { $lt: challengeMaxAttempts },
-        'phoneChallenge.attempts': { $lt: challengeMaxAttempts },
       },
-      { $inc: { 'emailChallenge.attempts': 1, 'phoneChallenge.attempts': 1 } },
+      { $inc: { 'emailChallenge.attempts': 1 } },
       { new: true },
     ).select(challengeSelect);
     if (!customer || customer.status !== 'pending_verification') {
       return res.status(400).json({ error: 'Les codes sont invalides ou expirés.' });
     }
     const emailValid = customer.emailVerifiedAt || checkCode(customer, 'email', emailCode);
-    const phoneValid = customer.phoneVerifiedAt || checkCode(customer, 'phone', phoneCode);
-    if (!emailValid || !phoneValid) {
-      return res.status(400).json({ error: 'Les codes sont invalides, épuisés ou expirés.' });
+    if (!emailValid) {
+      return res.status(400).json({ error: 'Le code e-mail est invalide, épuisé ou expiré.' });
     }
     const activation = await Customer.updateOne(
       { _id: customer._id, status: 'pending_verification' },
       {
         $set: {
           emailVerifiedAt: now,
-          phoneVerifiedAt: now,
+          phoneVerifiedAt: customer.phoneVerifiedAt || null,
           emailChallenge: {},
           phoneChallenge: {},
           status: 'active',
@@ -467,10 +457,10 @@ router.post('/login', authLimiter, auth.requireSameOrigin, async (req, res, next
     if (customer.status === 'locked' || customer.status === 'closed') {
       return res.status(403).json({ error: 'Ce compte est temporairement indisponible.' });
     }
-    if (customer.status !== 'active' || !customer.emailVerifiedAt || !customer.phoneVerifiedAt) {
+    if (customer.status !== 'active' || !customer.emailVerifiedAt) {
       return res
         .status(403)
-        .json({ error: 'Vérifiez votre e-mail et votre téléphone avant de vous connecter.' });
+        .json({ error: 'Vérifiez votre adresse e-mail avant de vous connecter.' });
     }
     if (!authChannelsReady()) {
       return res
@@ -566,10 +556,13 @@ router.post('/login/verify', authLimiter, auth.requireSameOrigin, async (req, re
     if (
       !customer ||
       customer.status !== 'active' ||
-      !customer.emailVerifiedAt ||
-      !customer.phoneVerifiedAt
+      !customer.emailVerifiedAt
     ) {
       return res.status(403).json({ error: 'Ce compte ne peut pas ouvrir de session.' });
+    }
+    if (!customer.phoneVerifiedAt) {
+      customer.phoneVerifiedAt = new Date();
+      await customer.save();
     }
     await createSession(customer, req, res);
     res.json({ customer: auth.publicCustomer(customer) });
