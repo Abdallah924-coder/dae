@@ -714,8 +714,8 @@ function Home() {
                 onChange={(event) => setSelectedChartAsset(event.target.value)}
               >
                 {(markets.length ? markets : marketAssetsFallback).map((item) => (
-                  <option value={item.id} key={item.id}>
-                    {item.id} · {item.name}
+                  <option value={item.asset || item.id} key={item.asset || item.id}>
+                    {item.asset || item.id} · {item.name}
                   </option>
                 ))}
               </select>
