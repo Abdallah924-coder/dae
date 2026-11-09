@@ -13,6 +13,7 @@ const historyErrors = new Map();
 const CACHE_MS = 5 * 60_000;
 const MAX_STALE_MS = 30 * 60_000;
 const RETRY_DELAY_MS = 5 * 60_000;
+const HISTORY_RETRY_DELAY_MS = 60_000;
 
 async function fetchCoinPaprikaPrices() {
   const response = await fetch('https://api.coinpaprika.com/v1/tickers?quotes=USD', {
@@ -145,7 +146,15 @@ async function fetchMarketHistory(asset) {
     `https://api.coingecko.com/api/v3/coins/${encodeURIComponent(asset.coinGeckoId)}/market_chart?${query}`,
     { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(12000) },
   );
-  if (!response.ok) throw new Error(`CoinGecko a répondu avec le statut ${response.status}`);
+  if (!response.ok) {
+    const error = new Error(`CoinGecko a répondu avec le statut ${response.status}`);
+    error.status = response.status;
+    const retryAfter = Number(response.headers.get('retry-after'));
+    if (response.status === 429 && Number.isFinite(retryAfter) && retryAfter > 0) {
+      error.retryAfterMs = Math.min(retryAfter * 1000, 15 * 60_000);
+    }
+    throw error;
+  }
   const chart = await response.json();
   if (!Array.isArray(chart.prices)) throw new Error('Historique de marché invalide');
   const observations = chart.prices
@@ -192,7 +201,7 @@ async function getMarketHistory(assetId, { allowStale = true } = {}) {
       })
       .catch((error) => {
         historyErrors.set(asset.id, error);
-        historyRetryAfter.set(asset.id, Date.now() + RETRY_DELAY_MS);
+        historyRetryAfter.set(asset.id, Date.now() + (error.retryAfterMs || HISTORY_RETRY_DELAY_MS));
         throw error;
       })
       .finally(() => historyPending.delete(asset.id));
