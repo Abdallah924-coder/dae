@@ -21,6 +21,7 @@ const depositSchema = new mongoose.Schema(
       max: Number.MAX_SAFE_INTEGER,
       validate: { validator: Number.isSafeInteger, message: 'eventIndex doit être un entier sûr' },
     },
+    blockNumber: { type: Number, required: true, min: 0, validate: Number.isSafeInteger },
     amountAtomic: { type: String, required: true, match: /^[1-9][0-9]{0,77}$/ },
     decimals: {
       type: Number,
@@ -32,7 +33,7 @@ const depositSchema = new mongoose.Schema(
     confirmations: { type: Number, default: 0, min: 0 },
     status: {
       type: String,
-      enum: ['detected', 'confirming', 'credited', 'rejected'],
+      enum: ['detected', 'confirming', 'compliance_review', 'credited', 'rejected'],
       default: 'detected',
       index: true,
     },

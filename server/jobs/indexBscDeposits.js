@@ -39,9 +39,7 @@ async function creditTransfer(log) {
   const wallet = await Wallet.findOne({ network: NETWORK, address: transfer.to }).select('_id customerId').lean();
   if (!wallet || BigInt(transfer.amountAtomic) <= 0n) return;
   const customer = await Customer.findOne({ _id: wallet.customerId, status: 'active', kycStatus: 'approved' }).select('_id').lean();
-  if (!customer) return;
 
-  const key = `bsc-deposit:${transfer.txHash}:${transfer.eventIndex}`;
   let deposit = await Deposit.findOne({ network: NETWORK, txHash: transfer.txHash, eventIndex: transfer.eventIndex });
   if (!deposit) {
     try {
@@ -52,10 +50,12 @@ async function creditTransfer(log) {
         network: NETWORK,
         txHash: transfer.txHash,
         eventIndex: transfer.eventIndex,
+        blockNumber: transfer.blockNumber,
         amountAtomic: transfer.amountAtomic,
         decimals: DECIMALS,
-        confirmations: 0,
-        status: 'confirming',
+        // Logs are only queried through the safe head, so they already satisfy this threshold.
+        confirmations: config.bsc.confirmations,
+        status: customer ? 'confirming' : 'compliance_review',
       }]);
     } catch (error) {
       if (error.code !== 11000) throw error;
@@ -63,21 +63,52 @@ async function creditTransfer(log) {
     }
   }
   if (deposit.status === 'credited' || deposit.status === 'rejected') return;
+  if (!customer) {
+    await Deposit.updateOne({ _id: deposit._id, status: { $in: ['detected', 'confirming'] } }, { $set: { status: 'compliance_review' } });
+    return;
+  }
+
+  await creditDeposit(deposit, wallet.customerId);
+}
+
+async function creditDeposit(deposit, customerId) {
+  const key = `bsc-deposit:${deposit.txHash}:${deposit.eventIndex}`;
 
   await postLedgerTransaction({
     type: 'deposit',
     idempotencyKey: key,
-    sourceRef: `${transfer.txHash}:${transfer.eventIndex}`,
+    sourceRef: `${deposit.txHash}:${deposit.eventIndex}`,
     createdBy: 'bsc-deposit-indexer',
-    metadata: { chainId: 56, tokenContract: config.bsc.usdtContract, blockNumber: transfer.blockNumber },
+    metadata: { chainId: 56, tokenContract: config.bsc.usdtContract, blockNumber: deposit.blockNumber },
     postings: [
-      { accountRef: `customer:${wallet.customerId}:available`, asset: ASSET, network: NETWORK, decimals: DECIMALS, side: 'credit', amountAtomic: transfer.amountAtomic },
-      { accountRef: 'system:bsc-custody', asset: ASSET, network: NETWORK, decimals: DECIMALS, side: 'debit', amountAtomic: transfer.amountAtomic },
+      { accountRef: `customer:${customerId}:available`, asset: ASSET, network: NETWORK, decimals: DECIMALS, side: 'credit', amountAtomic: deposit.amountAtomic },
+      { accountRef: 'system:bsc-custody', asset: ASSET, network: NETWORK, decimals: DECIMALS, side: 'debit', amountAtomic: deposit.amountAtomic },
     ],
   });
-  await Deposit.updateOne({ _id: deposit._id, status: { $ne: 'credited' } }, {
-    $set: { status: 'credited', confirmations: config.bsc.confirmations },
+  await Deposit.updateOne({ _id: deposit._id, status: { $in: ['detected', 'confirming', 'compliance_review'] } }, {
+    $set: { status: 'credited' },
   });
+}
+
+async function reconcilePendingDeposits(provider) {
+  const latest = await provider.getBlockNumber();
+  const pending = await Deposit.find({
+    network: NETWORK,
+    status: { $in: ['detected', 'confirming', 'compliance_review'] },
+  }).sort({ blockNumber: 1 }).limit(500).lean();
+  for (const deposit of pending) {
+    const confirmations = Math.max(0, latest - deposit.blockNumber + 1);
+    await Deposit.updateOne({ _id: deposit._id, status: { $in: ['detected', 'confirming', 'compliance_review'] } }, {
+      $set: { confirmations },
+    });
+    if (confirmations < config.bsc.confirmations) continue;
+    const customer = await Customer.findOne({ _id: deposit.customerId, status: 'active', kycStatus: 'approved' }).select('_id').lean();
+    if (!customer) {
+      if (deposit.status !== 'compliance_review') await Deposit.updateOne({ _id: deposit._id }, { $set: { status: 'compliance_review' } });
+      continue;
+    }
+    await creditDeposit(deposit, customer._id);
+  }
 }
 
 async function runOnce() {
@@ -128,6 +159,7 @@ async function main() {
   while (true) {
     try {
       const result = await runOnce();
+      await reconcilePendingDeposits(getProvider());
       if (result.indexedThrough !== null) await BscIndexerHeartbeat.updateOne({ name: 'bsc-usdt-bep20' }, { $set: { lastSeenAt: new Date(), indexedThrough: result.indexedThrough } }, { upsert: true });
       logger.info(result, 'Indexation des dépôts BSC terminée');
     } catch (error) {
@@ -146,4 +178,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { runOnce, creditTransfer };
+module.exports = { runOnce, creditTransfer, reconcilePendingDeposits };

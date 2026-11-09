@@ -2327,6 +2327,20 @@ function CustomerFundingHistory({ type }) {
   }, [type]);
   useEffect(() => { load(); }, [load]);
   const title = { deposit: 'Historique des dépôts', withdrawal: 'Historique des retraits', staking: 'Historique du staking' }[type];
+  const fundingStatusNames = {
+    detected: 'Détecté',
+    confirming: 'Confirmations en cours',
+    compliance_review: 'En attente de vérification',
+    credited: 'Crédité',
+    requested: 'Demandé',
+    approved: 'Approuvé',
+    queued: 'En file de traitement',
+    broadcast: 'Envoyé sur BSC',
+    completed: 'Terminé',
+    failed: 'Échoué',
+    rejected: 'Refusé',
+    cancelled: 'Annulé',
+  };
   return (
     <section className="customer-order-history customer-funding-history">
       <div className="customer-order-history-heading"><div><span className="eyebrow plain">ACTIVITÉS DU COMPTE</span><h2>{title}</h2></div></div>
@@ -2334,7 +2348,7 @@ function CustomerFundingHistory({ type }) {
       {!activities.length && !loading && !error && <p className="customer-history-pagination">Aucune opération enregistrée.</p>}
       {activities.map((item) => (
         <article className="funding-activity-row" key={item.id}>
-          <div><strong>{item.asset} · {item.network}</strong><small>{new Date(item.createdAt).toLocaleString('fr-FR')} · {item.status}</small></div>
+          <div><strong>{item.asset} · {item.network}</strong><small>{new Date(item.createdAt).toLocaleString('fr-FR')} · {fundingStatusNames[item.status] || item.status}</small></div>
           <strong>{item.amount === null ? 'Montant à confirmer' : `${formatDecimalString(item.amount)} ${item.asset}`}</strong>
           {item.reference && <small className="funding-reference">Tx · {item.reference}</small>}
         </article>
