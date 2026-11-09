@@ -6,6 +6,10 @@ let cachedSource;
 let pendingRequest;
 let retryAfter = 0;
 let lastFetchError;
+const historyCache = new Map();
+const historyPending = new Map();
+const historyRetryAfter = new Map();
+const historyErrors = new Map();
 const CACHE_MS = 5 * 60_000;
 const MAX_STALE_MS = 30 * 60_000;
 const RETRY_DELAY_MS = 5 * 60_000;
@@ -133,4 +137,80 @@ async function getMarketPrices({ allowStale = true } = {}) {
   }
 }
 
-module.exports = { getMarketPrices };
+async function fetchMarketHistory(asset) {
+  const end = new Date();
+  const start = new Date(end.getTime() - 24 * 60 * 60_000);
+  const query = new URLSearchParams({
+    start: start.toISOString(),
+    end: end.toISOString(),
+    interval: '1h',
+    limit: '32',
+    quote: 'usd',
+  });
+  const response = await fetch(
+    `https://api.coinpaprika.com/v1/tickers/${encodeURIComponent(asset.coinPaprikaId)}/historical?${query}`,
+    { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(12000) },
+  );
+  if (!response.ok) {
+    throw new Error(`CoinPaprika a répondu avec le statut ${response.status}`);
+  }
+  const observations = await response.json();
+  if (!Array.isArray(observations)) throw new Error('Historique de marché invalide');
+  const points = observations
+    .map((item) => ({ timestamp: Date.parse(item.timestamp), priceUsd: Number(item.price) }))
+    .filter(
+      (point) =>
+        Number.isFinite(point.timestamp) && Number.isFinite(point.priceUsd) && point.priceUsd > 0,
+    )
+    .sort((left, right) => left.timestamp - right.timestamp);
+  if (points.length < 2) throw new Error('Historique insuffisant pour tracer le marché');
+  return {
+    asset: asset.id,
+    name: asset.name,
+    range: '24h',
+    points,
+    source: 'CoinPaprika',
+    fetchedAt: new Date(),
+    stale: Date.now() - points[points.length - 1].timestamp > 90 * 60_000,
+  };
+}
+
+async function getMarketHistory(assetId, { allowStale = true } = {}) {
+  const asset = assets.find((item) => item.id === String(assetId || '').toUpperCase());
+  if (!asset) throw new Error('Actif non pris en charge');
+  const cached = historyCache.get(asset.id);
+  if (cached && Date.now() - cached.cachedAt < CACHE_MS) return cached.data;
+  if (Date.now() < (historyRetryAfter.get(asset.id) || 0)) {
+    if (allowStale && cached && Date.now() - cached.cachedAt < MAX_STALE_MS) {
+      return { ...cached.data, stale: true };
+    }
+    throw historyErrors.get(asset.id) || new Error('Historique temporairement indisponible');
+  }
+  let pending = historyPending.get(asset.id);
+  if (!pending) {
+    pending = fetchMarketHistory(asset)
+      .then((data) => {
+        historyCache.set(asset.id, { data, cachedAt: Date.now() });
+        historyRetryAfter.delete(asset.id);
+        historyErrors.delete(asset.id);
+        return data;
+      })
+      .catch((error) => {
+        historyErrors.set(asset.id, error);
+        historyRetryAfter.set(asset.id, Date.now() + RETRY_DELAY_MS);
+        throw error;
+      })
+      .finally(() => historyPending.delete(asset.id));
+    historyPending.set(asset.id, pending);
+  }
+  try {
+    return await pending;
+  } catch (error) {
+    if (allowStale && cached && Date.now() - cached.cachedAt < MAX_STALE_MS) {
+      return { ...cached.data, stale: true };
+    }
+    throw error;
+  }
+}
+
+module.exports = { getMarketPrices, getMarketHistory };

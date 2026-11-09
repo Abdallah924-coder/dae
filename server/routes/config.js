@@ -24,7 +24,7 @@ function networkEntries(configured = {}, defaults = []) {
   });
 }
 
-router.get('/', async (req, res, next) => {
+router.get('/', async (_req, res, next) => {
   try {
     const config = await SiteConfig.findOne({ key: 'main' }).lean();
     const receivingAddresses = config?.receivingAddresses || {};

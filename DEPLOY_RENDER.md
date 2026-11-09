@@ -24,6 +24,8 @@
 
 `ADMIN_EMAIL` reçoit les messages du formulaire de contact et une notification à chaque nouvelle demande d’achat ou de vente. Les e-mails partent via Brevo; vérifiez aussi `BREVO_API_KEY` et `BREVO_SENDER_EMAIL`. La variable facultative `PUBLIC_APP_URL` permet de définir l’URL utilisée dans les notifications admin; Render fournit automatiquement `RENDER_EXTERNAL_URL` si elle n’est pas définie.
 
+Les commandes et leurs événements d’audit exigent une base MongoDB compatible avec les transactions multi-documents. Planifiez `npm run expire` à intervalles réguliers depuis un ordonnanceur pour passer les demandes échues en statut expiré.
+
 ## URLs du site
 
 Les pages utilisent des chemins sans suffixe `.html` : `/`, `/acheter`, `/vendre`, `/attente`, `/suivi`, `/contact` et `/admin`. Les anciennes URLs en `.html` redirigent vers ces chemins.

@@ -6,9 +6,13 @@ const crypto = require('crypto');
 const express = require('express');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const mongoose = require('mongoose');
 const { config, validate } = require('./config/index');
 const { logger } = require('./lib/logger');
+const { safeRequestPath } = require('./lib/requestLog');
 const connectDB = require('./config/db');
+const { migrateLegacySellRate } = require('./services/rateMigration');
+const { migrateWalletAddressIndex } = require('./services/walletIndexMigration');
 const errorHandler = require('./middleware/errorHandler');
 const SiteConfig = require('./models/SiteConfig');
 
@@ -19,7 +23,10 @@ app.set('trust proxy', 1);
 
 // Request ID middleware (doit être le premier)
 app.use((req, res, next) => {
-  req.id = req.get('x-request-id') || crypto.randomUUID();
+  const suppliedRequestId = String(req.get('x-request-id') || '');
+  req.id = /^[A-Za-z0-9_-]{8,64}$/.test(suppliedRequestId)
+    ? suppliedRequestId
+    : crypto.randomUUID();
   res.set('x-request-id', req.id);
   next();
 });
@@ -31,11 +38,11 @@ app.use((req, res, next) => {
     const durationMs = Number(process.hrtime.bigint() - start) / 1e6;
     logger.info(
       {
-        req: { method: req.method, url: req.originalUrl, ip: req.ip },
+        req: { id: req.id, method: req.method, path: safeRequestPath(req) },
         res: { status: res.statusCode },
         durationMs: Math.round(durationMs),
       },
-      `${req.method} ${req.originalUrl} ${res.statusCode} ${Math.round(durationMs)}ms`,
+      `${req.method} ${safeRequestPath(req)} ${res.statusCode} ${Math.round(durationMs)}ms`,
     );
   });
   next();
@@ -65,13 +72,13 @@ app.use(
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-app.get('/healthz', async (req, res) => {
+app.get('/healthz', async (_req, res) => {
   try {
     if (mongoose.connection.readyState !== 1) {
       return res.status(503).json({ status: 'unavailable', database: 'disconnected' });
     }
     res.json({ status: 'ok' });
-  } catch (err) {
+  } catch (_err) {
     res.status(503).json({ status: 'unavailable' });
   }
 });
@@ -136,6 +143,16 @@ const cleanPages = {
   '/attente': 'index.html',
   '/contact': 'index.html',
   '/suivi': 'index.html',
+  '/inscription': 'index.html',
+  '/connexion': 'index.html',
+  '/mot-de-passe-oublie': 'index.html',
+  '/compte': 'index.html',
+  '/portefeuille': 'index.html',
+  '/depot': 'index.html',
+  '/retrait': 'index.html',
+  '/staking': 'index.html',
+  '/verification': 'index.html',
+  '/securite': 'index.html',
 };
 const legacyPages = {
   '/admin.html': '/admin',
@@ -148,7 +165,7 @@ const legacyPages = {
 };
 
 for (const [route, filename] of Object.entries(cleanPages)) {
-  app.get(route, (req, res, next) => {
+  app.get(route, (_req, res, next) => {
     res.sendFile(path.join(publicDirectory, 'app', filename), (error) => {
       if (error) next(error);
     });
@@ -166,17 +183,35 @@ app.use(express.static(publicDirectory));
 
 const orderLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 60 });
 const contactLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 5 });
+const marketLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 120 });
 const adminLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 200 });
 const adminLoginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10 });
 
 app.use('/api/rates', require('./routes/rates'));
-app.use('/api/markets', require('./routes/markets'));
+app.use('/api/markets', marketLimiter, require('./routes/markets'));
 app.use('/api/config', require('./routes/config'));
+app.use('/api/account', (_req, res, next) => {
+  res.set('Cache-Control', 'no-store');
+  next();
+});
+app.use('/api/account', require('./routes/account'));
 app.use('/api/contact', contactLimiter, require('./routes/contact'));
-app.use('/api/orders', orderLimiter, require('./routes/orders'));
+app.use(
+  '/api/orders',
+  (_req, res, next) => {
+    res.set('Cache-Control', 'no-store');
+    next();
+  },
+  orderLimiter,
+  require('./routes/orders'),
+);
 app.use(
   '/api/admin',
   adminLimiter,
+  (_req, res, next) => {
+    res.set('Cache-Control', 'no-store');
+    next();
+  },
   (req, res, next) => {
     if (req.path === '/auth/login' && req.method === 'POST')
       return adminLoginLimiter(req, res, next);
@@ -184,13 +219,15 @@ app.use(
   },
   require('./routes/admin'),
 );
-app.use('/api', (req, res) => res.status(404).json({ error: 'Route introuvable' }));
+app.use('/api', (_req, res) => res.status(404).json({ error: 'Route introuvable' }));
 
 app.use(errorHandler);
 
 const PORT = config.port;
 connectDB()
-  .then(() => {
+  .then(async () => {
+    await migrateWalletAddressIndex();
+    await migrateLegacySellRate();
     app.listen(PORT, () => {
       logger.info({ port: PORT, env: config.node }, `Serveur sur http://localhost:${PORT}`);
     });

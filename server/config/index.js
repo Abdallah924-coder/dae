@@ -1,7 +1,7 @@
 'use strict';
 
 const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
+require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
 
 const ALLOWED_ASSETS = ['USDT', 'BTC', 'POL', 'ETH', 'SOL'];
 const ALLOWED_NETWORKS = new Set([
@@ -17,6 +17,7 @@ const ALLOWED_NETWORKS = new Set([
   'SOLANA',
   'BINANCE_PAY',
 ]);
+const BSC_PEG_USD_CONTRACT = '0x55d398326f99059ff775485246999027b3197955';
 
 const config = {
   node: process.env.NODE_ENV || 'development',
@@ -60,6 +61,24 @@ const config = {
     maxStaleMs: Number(process.env.MARKET_MAX_STALE_MS) || 30 * 60_000,
     retryDelayMs: Number(process.env.MARKET_RETRY_DELAY_MS) || 5 * 60_000,
   },
+  bsc: {
+    rpcUrl: process.env.BSC_RPC_URL || '',
+    chainId: Number(process.env.BSC_CHAIN_ID || 56),
+    usdtContract: (process.env.BSC_USDT_CONTRACT || BSC_PEG_USD_CONTRACT).trim(),
+    hdPublicKey: (process.env.BSC_HD_XPUB || '').trim(),
+    masterAddress: (process.env.BSC_MASTER_ADDRESS || '').trim(),
+    gasAddress: (process.env.BSC_GAS_ADDRESS || '').trim(),
+    confirmations: Number(process.env.BSC_CONFIRMATIONS || 15),
+    scanIntervalMs: Number(process.env.BSC_SCAN_INTERVAL_MS || 15000),
+    startBlock: process.env.BSC_START_BLOCK?.trim() ? Number(process.env.BSC_START_BLOCK) : null,
+    depositsEnabled: process.env.BSC_DEPOSITS_ENABLED === 'true',
+    withdrawalsEnabled: process.env.BSC_WITHDRAWALS_ENABLED === 'true',
+    sweepsEnabled: process.env.BSC_SWEEPS_ENABLED === 'true',
+    masterDerivationPath: process.env.BSC_MASTER_DERIVATION_PATH || "m/44'/60'/1'/0/0",
+    gasDerivationPath: process.env.BSC_GAS_DERIVATION_PATH || "m/44'/60'/2'/0/0",
+    gasTopUpBnb: process.env.BSC_GAS_TOPUP_BNB || '0.003',
+    customerDerivationPath: process.env.BSC_CUSTOMER_DERIVATION_PATH || "m/44'/60'/0'/0",
+  },
   maintenance: {
     checkMs: Number(process.env.MAINTENANCE_CHECK_MS) || 3000,
   },
@@ -83,4 +102,4 @@ function validate() {
   }
 }
 
-module.exports = { config, validate };
+module.exports = { config, validate, BSC_PEG_USD_CONTRACT };

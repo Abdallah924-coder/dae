@@ -70,7 +70,7 @@ function login(req, res, next) {
     return res.status(401).json({ error: 'Adresse e-mail ou mot de passe incorrect' });
   }
   if (!safeEqual(email, configuredEmail) || !safeEqual(password, configuredPassword)) {
-    logger.warn({ email }, 'Tentative de connexion admin échouée');
+    logger.warn('Tentative de connexion admin échouée');
     return res.status(401).json({ error: 'Adresse e-mail ou mot de passe incorrect' });
   }
   try {

@@ -1,14 +1,30 @@
 'use strict';
 const express = require('express');
+const mongoose = require('mongoose');
+const { config } = require('../config');
 const adminAuth = require('../middleware/adminAuth');
 const Rate = require('../models/Rate');
 const Order = require('../models/Order');
 const OrderEvent = require('../models/OrderEvent');
+const Customer = require('../models/Customer');
+const CustomerSession = require('../models/CustomerSession');
+const CustomerAuditEvent = require('../models/CustomerAuditEvent');
+const CustomerKycAuditEvent = require('../models/CustomerKycAuditEvent');
 const SiteConfig = require('../models/SiteConfig');
 const assets = require('../config/cryptoAssets');
 const { orderStatusChanged } = require('../services/email');
 const { logger } = require('../lib/logger');
-const { config } = require('../config/index');
+const { hashOrderReference } = require('../lib/requestLog');
+const { supportsMultiDocumentTransactions } = require('../services/mongoCapabilities');
+const customerAuthService = require('../services/customerAuth');
+const { transitionOrder } = require('../services/orderLifecycle');
+const { bscConfigStatus } = require('../services/bsc');
+const BscTransferJob = require('../models/BscTransferJob');
+const BscCollectionRun = require('../models/BscCollectionRun');
+const BscSignerHeartbeat = require('../models/BscSignerHeartbeat');
+const BscIndexerHeartbeat = require('../models/BscIndexerHeartbeat');
+const { Contract, formatEther, formatUnits, getAddress } = require('ethers');
+const { getProvider } = require('../services/bsc');
 
 const router = express.Router();
 router.post('/auth/login', adminAuth.login);
@@ -40,7 +56,19 @@ function configuredNetworks(config, asset) {
   return asset.networks.map((network) => ({ ...network, address: '' }));
 }
 
-router.get('/dashboard', async (req, res, next) => {
+function hasPublicHttpsUrl(value) {
+  try {
+    return new URL(String(value || '').trim()).protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+function mongoTransactionsReady() {
+  return supportsMultiDocumentTransactions(mongoose.connection);
+}
+
+router.get('/dashboard', async (_req, res, next) => {
   try {
     const groups = await Order.aggregate([
       {
@@ -94,16 +122,381 @@ router.get('/dashboard', async (req, res, next) => {
   }
 });
 
-// Liste des commandes (filtre ?status=...)
+router.get('/customers', async (req, res, next) => {
+  try {
+    const allowedStatuses = ['pending_verification', 'active', 'locked', 'closed'];
+    const allowedKycStatuses = ['not_started', 'pending', 'approved', 'rejected'];
+    const status = allowedStatuses.includes(req.query.status) ? req.query.status : '';
+    const kycStatus = allowedKycStatuses.includes(req.query.kycStatus) ? req.query.kycStatus : '';
+    const search = String(req.query.q || '')
+      .trim()
+      .slice(0, 100);
+    const escapedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const filter = {
+      ...(status ? { status } : {}),
+      ...(kycStatus ? { kycStatus } : {}),
+      ...(escapedSearch
+        ? {
+            $or: [
+              { email: { $regex: escapedSearch, $options: 'i' } },
+              { phone: { $regex: escapedSearch, $options: 'i' } },
+              { firstName: { $regex: escapedSearch, $options: 'i' } },
+              { lastName: { $regex: escapedSearch, $options: 'i' } },
+            ],
+          }
+        : {}),
+    };
+    const pageSize = 50;
+    const requestedPage = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+    const filteredTotal = await Customer.countDocuments(filter);
+    const pages = Math.max(1, Math.ceil(filteredTotal / pageSize));
+    const page = Math.min(requestedPage, pages);
+    const [customers, total, active, pendingVerification, kycPending, kycApproved] =
+      await Promise.all([
+        Customer.find(filter)
+          .select(
+            'firstName lastName email phone status kycStatus emailVerifiedAt phoneVerifiedAt createdAt lastLoginAt',
+          )
+          .sort({ createdAt: -1 })
+          .skip((page - 1) * pageSize)
+          .limit(pageSize)
+          .lean(),
+        Customer.countDocuments(),
+        Customer.countDocuments({ status: 'active' }),
+        Customer.countDocuments({ status: 'pending_verification' }),
+        Customer.countDocuments({ kycStatus: 'pending' }),
+        Customer.countDocuments({ kycStatus: 'approved' }),
+      ]);
+    res.set('Cache-Control', 'no-store');
+    res.json({
+      customers,
+      summary: { total, active, pendingVerification, kycPending, kycApproved },
+      pagination: { page, pageSize, total: filteredTotal, pages },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.patch('/customers/:id/status', async (req, res, next) => {
+  const customerId = req.params.id;
+  const targetStatus = req.body?.status;
+  const reason = String(req.body?.reason || '').trim();
+  if (!mongoose.isValidObjectId(customerId)) {
+    return res.status(400).json({ error: 'Identifiant de compte invalide.' });
+  }
+  if (!['active', 'locked'].includes(targetStatus)) {
+    return res.status(400).json({ error: 'Statut de compte invalide.' });
+  }
+  if (reason.length < 8 || reason.length > 300) {
+    return res.status(400).json({ error: 'Le motif doit contenir entre 8 et 300 caractères.' });
+  }
+  const fromStatus = targetStatus === 'locked' ? 'active' : 'locked';
+  const filter = {
+    _id: customerId,
+    status: fromStatus,
+    emailVerifiedAt: { $ne: null },
+    phoneVerifiedAt: { $ne: null },
+  };
+  let session;
+  let updatedCustomer = null;
+  try {
+    session = await mongoose.startSession();
+    await session.withTransaction(async () => {
+      updatedCustomer = null;
+      updatedCustomer = await Customer.findOneAndUpdate(
+        filter,
+        { $set: { status: targetStatus } },
+        { new: true, session, runValidators: true },
+      ).select('firstName lastName email phone status kycStatus');
+      if (!updatedCustomer) return;
+      if (targetStatus === 'locked') {
+        await CustomerSession.updateMany(
+          { customerId, revokedAt: null },
+          { $set: { revokedAt: new Date() } },
+          { session },
+        );
+      }
+      await CustomerAuditEvent.create(
+        [{
+          customerId,
+          actor: process.env.ADMIN_EMAIL?.trim().toLowerCase() || 'admin',
+          action: targetStatus === 'locked' ? 'account_locked' : 'account_unlocked',
+          fromStatus,
+          toStatus: targetStatus,
+          reason,
+        }],
+        { session },
+      );
+    });
+    if (!updatedCustomer) {
+      return res.status(409).json({ error: 'Le compte a changé d’état. Actualisez la liste.' });
+    }
+    return res.json({ customer: updatedCustomer });
+  } catch (error) {
+    if (/replica set|transaction numbers are only allowed/i.test(error.message || '')) {
+      return res.status(503).json({
+        error: 'Cette action exige MongoDB en replica set pour garantir une mise à jour auditée atomique.',
+      });
+    }
+    return next(error);
+  } finally {
+    if (session) await session.endSession();
+  }
+});
+
+router.patch('/customers/:id/kyc', async (req, res, next) => {
+  const customerId = req.params.id;
+  const targetStatus = String(req.body?.status || '');
+  const reason = String(req.body?.reason || '').trim();
+  if (!mongoose.isValidObjectId(customerId)) return res.status(400).json({ error: 'Identifiant de compte invalide.' });
+  if (!['pending', 'approved', 'rejected'].includes(targetStatus)) return res.status(400).json({ error: 'Statut KYC invalide.' });
+  if (reason.length < 8 || reason.length > 300) return res.status(400).json({ error: 'Le motif doit contenir entre 8 et 300 caractères.' });
+  if (targetStatus === 'approved') {
+    const contactVerified = await Customer.exists({ _id: customerId, status: 'active', emailVerifiedAt: { $ne: null }, phoneVerifiedAt: { $ne: null } });
+    if (!contactVerified) return res.status(409).json({ error: 'Le compte doit être actif avec e-mail et téléphone confirmés.' });
+  }
+  let session;
+  let updatedCustomer;
+  try {
+    session = await mongoose.startSession();
+    await session.withTransaction(async () => {
+      const current = await Customer.findById(customerId).select('kycStatus').session(session).lean();
+      if (!current) return;
+      updatedCustomer = await Customer.findOneAndUpdate(
+        { _id: customerId, kycStatus: current.kycStatus },
+        { $set: { kycStatus: targetStatus, kycReviewNote: reason } },
+        { new: true, session, runValidators: true },
+      ).select('firstName lastName email status kycStatus');
+      if (!updatedCustomer) throw new Error('KYC_STATE_CONFLICT');
+      await CustomerKycAuditEvent.create([{
+        customerId, actor: process.env.ADMIN_EMAIL?.trim().toLowerCase() || 'admin',
+        fromStatus: current.kycStatus, toStatus: targetStatus, reason,
+      }], { session });
+    });
+    if (!updatedCustomer) return res.status(404).json({ error: 'Compte client introuvable.' });
+    return res.json({ customer: updatedCustomer });
+  } catch (error) {
+    if (error.message === 'KYC_STATE_CONFLICT') return res.status(409).json({ error: 'Le statut KYC a changé. Actualisez la liste.' });
+    if (/replica set|transaction numbers are only allowed/i.test(error.message || '')) {
+      return res.status(503).json({ error: 'MongoDB en replica set est requis pour auditer la revue KYC.' });
+    }
+    return next(error);
+  } finally {
+    if (session) await session.endSession();
+  }
+});
+
+router.get('/customers/:id/kyc-audit', async (req, res, next) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ error: 'Identifiant de compte invalide.' });
+    const events = await CustomerKycAuditEvent.find({ customerId: req.params.id })
+      .select('actor fromStatus toStatus reason createdAt').sort({ createdAt: -1 }).limit(50).lean();
+    return res.json({ events });
+  } catch (error) { return next(error); }
+});
+
+router.get('/customers/:id/audit', async (req, res, next) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({ error: 'Identifiant de compte invalide.' });
+    }
+    const events = await CustomerAuditEvent.find({ customerId: req.params.id })
+      .select('actor action fromStatus toStatus reason createdAt')
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(20)
+      .lean();
+    return res.json({ events });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/readiness', async (_req, res, next) => {
+  try {
+  const siteConfig = await SiteConfig.findOne({ key: 'main' }).lean();
+  const paymentRails = {
+    mtn: Boolean(siteConfig?.paymentNumbers?.mtn?.trim()),
+    airtel: Boolean(siteConfig?.paymentNumbers?.airtel?.trim()),
+    binancePay: /^\d{4,32}$/.test(String(siteConfig?.binancePayId || '').trim()),
+  };
+  const emailReady = Boolean(
+    process.env.BREVO_API_KEY?.trim() && process.env.BREVO_SENDER_EMAIL?.trim(),
+  );
+  const smsReady = Boolean(
+    process.env.INFOBIP_API_KEY?.trim() && process.env.INFOBIP_SENDER?.trim(),
+  );
+  const authSecretReady = (process.env.CUSTOMER_AUTH_SECRET || '').length >= 32;
+  const legalDocumentsReady = Boolean(
+    process.env.CUSTOMER_LEGAL_REVIEWED === 'true' &&
+    process.env.CUSTOMER_TERMS_VERSION?.trim() &&
+    process.env.CUSTOMER_PRIVACY_VERSION?.trim() &&
+    hasPublicHttpsUrl(process.env.CUSTOMER_TERMS_URL) &&
+    hasPublicHttpsUrl(process.env.CUSTOMER_PRIVACY_URL),
+  );
+  const accountRegistrationReady =
+    emailReady && smsReady && authSecretReady && legalDocumentsReady && customerAuthService.publicAppOriginReady();
+  res.set('Cache-Control', 'no-store');
+  const bsc = bscConfigStatus();
+  const signerHeartbeat = await BscSignerHeartbeat.findOne({ name: 'local-bsc-signer', chainId: 56 }).select('lastSeenAt masterAddress gasAddress').lean();
+  const signerOnline = Boolean(signerHeartbeat && Date.now() - signerHeartbeat.lastSeenAt.getTime() <= 60_000);
+  const indexerHeartbeat = await BscIndexerHeartbeat.findOne({ name: 'bsc-usdt-bep20' }).select('lastSeenAt indexedThrough').lean();
+  const indexerOnline = Boolean(indexerHeartbeat && Date.now() - indexerHeartbeat.lastSeenAt.getTime() <= 60_000);
+  res.json({
+    accounts: {
+      registration: accountRegistrationReady,
+      recovery:
+        emailReady &&
+        smsReady &&
+        authSecretReady &&
+        mongoTransactionsReady() &&
+        customerAuthService.publicAppOriginReady(),
+      email: emailReady,
+      sms: smsReady,
+      sessionSecret: authSecretReady,
+      publicAppOrigin: customerAuthService.publicAppOriginReady(),
+      legalDocuments: legalDocumentsReady,
+    },
+    database: { transactions: mongoTransactionsReady() },
+    identity: { enabled: true, status: 'manual_admin_review' },
+    custody: {
+      wallets: { enabled: bsc.xpub, status: bsc.xpub ? 'bsc_xpub_configured' : 'bsc_xpub_missing' },
+      deposits: { enabled: Boolean(bsc.depositsEnabled && indexerOnline), status: indexerOnline ? 'indexer_online' : 'indexer_offline' },
+      withdrawals: { enabled: false, status: 'self_hosted_signer_not_integrated' },
+      staking: { enabled: false, status: 'product_not_configured' },
+    },
+    bsc: { configured: bsc.ready, ...bsc, signerOnline, indexerOnline, indexedThrough: indexerHeartbeat?.indexedThrough || null, token: 'Binance-Peg BSC-USD', decimals: 18, chainId: 56 },
+    regulatoryReview: process.env.DAE_REGULATORY_REVIEWED === 'true',
+    paymentRails,
+    manualExchange: {
+      enabled: mongoTransactionsReady(),
+      status: mongoTransactionsReady() ? 'manual_order_workflow' : 'mongo_transactions_required',
+    },
+    assetMovementsEnabled: false,
+  });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post('/custody/bsc/collect', async (req, res, next) => {
+  let session;
+  try {
+    const bsc = bscConfigStatus();
+    if (!bsc.sweepsEnabled || !bsc.master || !bsc.gas || !bsc.xpub || !bsc.token) return res.status(503).json({ error: 'La collecte BSC est désactivée ou incomplète dans la configuration opérateur.' });
+    const heartbeat = await BscSignerHeartbeat.findOne({ name: 'local-bsc-signer', chainId: 56, masterAddress: config.bsc.masterAddress.toLowerCase(), gasAddress: config.bsc.gasAddress.toLowerCase() }).lean();
+    if (!heartbeat || Date.now() - heartbeat.lastSeenAt.getTime() > 60_000) return res.status(503).json({ error: 'Le signataire local DAE est hors ligne.' });
+    const reason = String(req.body?.reason || '').trim().slice(0, 300);
+    if (reason.length < 8) return res.status(400).json({ error: 'Motif de collecte requis (8 caractères minimum).' });
+    const idempotencyKey = String(req.get('idempotency-key') || req.body?.idempotencyKey || '').trim();
+    if (!/^[0-9a-f-]{36}$/i.test(idempotencyKey)) return res.status(400).json({ error: 'Clé d’idempotence UUID requise.' });
+    const existing = await BscCollectionRun.findOne({ idempotencyKey }).lean();
+    if (existing) return res.json({ runId: String(existing._id), status: existing.status, walletCount: existing.walletCount });
+    const customers = await Customer.find({ status: 'active', kycStatus: 'approved' }).select('_id').lean();
+    const wallets = await require('../models/Wallet').find({
+      customerId: { $in: customers.map((customer) => customer._id) }, network: 'BEP20', status: 'active', address: { $type: 'string' },
+    }).select('_id address').lean();
+    if (!wallets.length) return res.status(409).json({ error: 'Aucun portefeuille BSC actif et vérifié à collecter.' });
+    if (!mongoTransactionsReady()) return res.status(503).json({ error: 'MongoDB en replica set est requis pour créer une collecte atomique.' });
+    session = await mongoose.startSession();
+    let run;
+    await session.withTransaction(async () => {
+      [run] = await BscCollectionRun.create([{
+        actor: process.env.ADMIN_EMAIL.trim().toLowerCase(), idempotencyKey,
+        reason, walletCount: wallets.length, status: 'queued',
+      }], { session });
+      await BscTransferJob.insertMany(wallets.map((wallet) => ({
+        kind: 'sweep', status: 'queued', idempotencyKey: `bsc-sweep:${idempotencyKey}:${wallet._id}`,
+        sourceAddress: wallet.address, destination: config.bsc.masterAddress,
+        walletId: wallet._id, collectionRunId: run._id,
+      })), { session, ordered: true });
+    });
+    return res.status(202).json({ runId: String(run._id), status: 'queued', walletCount: wallets.length });
+  } catch (error) {
+    const idempotencyKey = String(req.get('idempotency-key') || req.body?.idempotencyKey || '').trim();
+    if (error.code === 11000 && idempotencyKey) {
+      const run = await BscCollectionRun.findOne({ idempotencyKey }).lean();
+      if (run) return res.json({ runId: String(run._id), status: run.status, walletCount: run.walletCount });
+    }
+    return next(error);
+  } finally {
+    if (session) await session.endSession();
+  }
+});
+
+router.get('/custody/bsc/balances', async (_req, res, next) => {
+  try {
+    const status = bscConfigStatus();
+    if (!status.rpc || !status.token || !status.master || !status.gas) {
+      return res.json({ available: false, reason: 'Configuration BSC incomplète.' });
+    }
+    const provider = getProvider();
+    const chain = await provider.getNetwork();
+    if (Number(chain.chainId) !== 56) return res.status(503).json({ error: 'RPC hors réseau BNB Smart Chain.' });
+    const token = new Contract(config.bsc.usdtContract, ['function balanceOf(address) view returns (uint256)'], provider);
+    const [masterBnb, gasBnb, masterUsdt, queuedSweeps, lastCollection] = await Promise.all([
+      provider.getBalance(getAddress(config.bsc.masterAddress)),
+      provider.getBalance(getAddress(config.bsc.gasAddress)),
+      token.balanceOf(getAddress(config.bsc.masterAddress)),
+      BscTransferJob.countDocuments({ kind: 'sweep', status: { $in: ['queued', 'processing', 'broadcast'] } }),
+      BscCollectionRun.findOne().sort({ createdAt: -1 }).select('status walletCount createdAt actor reason').lean(),
+    ]);
+    return res.json({
+      available: true,
+      masterAddress: config.bsc.masterAddress,
+      gasAddress: config.bsc.gasAddress,
+      masterBnb: formatEther(masterBnb),
+      gasBnb: formatEther(gasBnb),
+      masterBscUsd: formatUnits(masterUsdt, 18),
+      queuedSweeps,
+      lastCollection,
+      token: 'Binance-Peg BSC-USD',
+    });
+  } catch (error) { return next(error); }
+});
+
+// Recherche et pagination des commandes (filtre ?status=...&q=...&page=...)
 router.get('/orders', async (req, res, next) => {
   try {
-    const filter = {};
-    if (Order.STATUSES.includes(req.query.status)) filter.status = req.query.status;
+    const status = Order.STATUSES.includes(req.query.status) ? req.query.status : '';
+    const search = String(req.query.q || '')
+      .trim()
+      .slice(0, 100);
+    const escapedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const filter = {
+      ...(status ? { status } : {}),
+      ...(escapedSearch
+        ? {
+            $or: [
+              { ref: { $regex: escapedSearch, $options: 'i' } },
+              { email: { $regex: escapedSearch, $options: 'i' } },
+              { phone: { $regex: escapedSearch, $options: 'i' } },
+              { asset: { $regex: escapedSearch, $options: 'i' } },
+            ],
+          }
+        : {}),
+    };
+    const pageSize = 50;
+    const requestedPage = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+    const total = await Order.countDocuments(filter);
+    const pages = Math.max(1, Math.ceil(total / pageSize));
+    const page = Math.min(requestedPage, pages);
     const orders = await Order.find(filter)
       .select('-proofImage')
-      .sort({ createdAt: -1 })
-      .limit(200);
-    res.json(orders);
+      .sort({ createdAt: -1, _id: -1 })
+      .skip((page - 1) * pageSize)
+      .limit(pageSize)
+      .lean();
+    res.set('Cache-Control', 'no-store');
+    res.json({
+      orders: orders.map((order) => ({
+        ...order,
+        amountCrypto: order.amountCrypto == null ? null : String(order.amountCrypto),
+        amountUsdt: order.amountUsdt == null ? null : String(order.amountUsdt),
+        unitPriceUsd: order.unitPriceUsd == null ? null : String(order.unitPriceUsd),
+      })),
+      pagination: { page, pageSize, total, pages },
+    });
   } catch (err) {
     next(err);
   }
@@ -122,7 +515,7 @@ router.get('/orders/:ref/proof', async (req, res, next) => {
 router.get('/orders/:ref/events', async (req, res, next) => {
   try {
     const events = await OrderEvent.find({ orderRef: String(req.params.ref) })
-      .sort({ createdAt: 1 })
+      .sort({ createdAt: 1, _id: 1 })
       .lean();
     res.json(events);
   } catch (err) {
@@ -141,42 +534,45 @@ router.patch('/orders/:ref', async (req, res, next) => {
     if (!allowedTransitions[from]?.includes(status)) {
       return res.status(409).json({ error: `Transition impossible : ${from} → ${status}` });
     }
-    order.status = status;
-    await order.save();
-    await OrderEvent.create({
-      orderRef: order.ref,
-      from,
-      to: status,
-      note: note ? String(note).slice(0, 300) : undefined,
+    const updatedOrder = await transitionOrder({
+      orderId: order._id,
+      expectedStatus: from,
+      nextStatus: status,
+      actorType: 'admin',
+      actorRef: process.env.ADMIN_EMAIL?.trim().toLowerCase() || 'admin',
+      note: note ? String(note).trim().slice(0, 300) : undefined,
     });
+    if (!updatedOrder) {
+      return res.status(409).json({ error: 'La commande a changé entre-temps. Actualisez la liste.' });
+    }
     let notificationSent = true;
     if (['processing', 'completed', 'cancelled', 'failed'].includes(status)) {
       try {
-        await orderStatusChanged(order, status);
+        await orderStatusChanged(updatedOrder, status);
       } catch (error) {
         notificationSent = false;
         logger.error(
-          { orderRef: order.ref, err: error },
+          { orderRefHash: hashOrderReference(updatedOrder.ref), err: error },
           'Échec de l’e-mail de mise à jour de la commande',
         );
       }
     }
-    res.json({ ref: order.ref, status: order.status, notificationSent });
+    res.json({ ref: updatedOrder.ref, status: updatedOrder.status, notificationSent });
   } catch (err) {
     next(err);
   }
 });
 
 // Historique des taux
-router.get('/rates', async (req, res, next) => {
+router.get('/rates', async (_req, res, next) => {
   try {
-    res.json(await Rate.find().sort({ createdAt: -1 }).limit(20));
+    res.json(await Rate.find().sort({ createdAt: -1, _id: -1 }).limit(20));
   } catch (err) {
     next(err);
   }
 });
 
-router.get('/settings', async (req, res, next) => {
+router.get('/settings', async (_req, res, next) => {
   try {
     const config = await SiteConfig.findOne({ key: 'main' }).lean();
     res.json({
@@ -328,6 +724,8 @@ router.post('/rates', async (req, res, next) => {
     const nums = [buyRate, sellRate, buyMinXaf, buyMaxXaf, sellMinXaf, sellMaxXaf].map(Number);
     if (
       nums.some((n) => !Number.isFinite(n) || n <= 0) ||
+      nums.slice(0, 2).some((n) => !Number.isSafeInteger(n)) ||
+      nums.slice(2).some((n) => !Number.isSafeInteger(n)) ||
       nums[2] >= nums[3] ||
       nums[4] >= nums[5]
     ) {

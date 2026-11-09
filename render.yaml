@@ -17,9 +17,63 @@ services:
         sync: false
       - key: ADMIN_SESSION_SECRET
         sync: false
+      - key: PUBLIC_APP_URL
+        sync: false
       - key: BREVO_API_KEY
         sync: false
       - key: BREVO_SENDER_EMAIL
         sync: false
+      - key: INFOBIP_API_KEY
+        sync: false
+      - key: INFOBIP_BASE_URL
+        value: https://api.infobip.com
+      - key: INFOBIP_SENDER
+        sync: false
+      - key: CUSTOMER_AUTH_SECRET
+        sync: false
+      - key: CUSTOMER_LEGAL_REVIEWED
+        sync: false
+      - key: CUSTOMER_TERMS_VERSION
+        sync: false
+      - key: CUSTOMER_PRIVACY_VERSION
+        sync: false
+      - key: CUSTOMER_TERMS_URL
+        sync: false
+      - key: CUSTOMER_PRIVACY_URL
+        sync: false
+      - key: DAE_REGULATORY_REVIEWED
+        sync: false
       - key: BREVO_SENDER_NAME
         value: DAE Crypto
+      - key: BSC_RPC_URL
+        sync: false
+      - key: BSC_CHAIN_ID
+        value: "56"
+      - key: BSC_USDT_CONTRACT
+        value: 0x55d398326f99059ff775485246999027b3197955
+      - key: BSC_HD_XPUB
+        sync: false
+      - key: BSC_MASTER_ADDRESS
+        sync: false
+      - key: BSC_GAS_ADDRESS
+        sync: false
+      - key: BSC_CONFIRMATIONS
+        value: "15"
+      - key: BSC_SCAN_INTERVAL_MS
+        value: "15000"
+      - key: BSC_START_BLOCK
+        sync: false
+      - key: BSC_DEPOSITS_ENABLED
+        value: "false"
+      - key: BSC_WITHDRAWALS_ENABLED
+        value: "false"
+      - key: BSC_SWEEPS_ENABLED
+        value: "false"
+      - key: BSC_MASTER_DERIVATION_PATH
+        value: "m/44'/60'/1'/0/0"
+      - key: BSC_GAS_DERIVATION_PATH
+        value: "m/44'/60'/2'/0/0"
+      - key: BSC_CUSTOMER_DERIVATION_PATH
+        value: "m/44'/60'/0'/0"
+      - key: BSC_GAS_TOPUP_BNB
+        value: "0.003"

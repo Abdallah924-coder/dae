@@ -1,5 +1,4 @@
 'use strict';
-const { logger } = require('../lib/logger');
 const BREVO_URL = 'https://api.brevo.com/v3/smtp/email';
 function escapeHtml(value) {
   return String(value).replace(
@@ -111,10 +110,20 @@ function contactMessage({ name, email, message }) {
     html: `<h2>Nouveau message du formulaire de contact</h2><p><strong>Nom：</strong> ${escapeHtml(name)}</p><p><strong>E-mail：</strong> ${escapeHtml(email)}</p><p><strong>Message：</strong></p><p>${escapeHtml(message).replace(/\n/g, '<br>')}</p>`,
   });
 }
+function customerVerificationCode({ email, code }) {
+  const text = `Votre code de vérification DAE Crypto est ${code}. Il expire dans 10 minutes. Ne le partagez avec personne.`;
+  return sendEmail({
+    to: email,
+    subject: 'Votre code de vérification DAE Crypto',
+    text,
+    html: `<p>Votre code de vérification DAE Crypto :</p><p style="font-size:24px;font-weight:700;letter-spacing:6px">${escapeHtml(code)}</p><p>Il expire dans 10 minutes. Ne le partagez avec personne.</p>`,
+  });
+}
 module.exports = {
   sendEmail,
   orderSubmitted,
   orderReceivedByAdmin,
   orderStatusChanged,
   contactMessage,
+  customerVerificationCode,
 };

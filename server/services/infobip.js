@@ -1,5 +1,4 @@
 'use strict';
-const { logger } = require('../lib/logger');
 const INFOBIP_URL = 'https://api.infobip.com';
 function normalizePhoneNumber(phoneNumber) {
   const raw = String(phoneNumber || '').trim();
