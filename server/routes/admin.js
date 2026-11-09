@@ -249,8 +249,8 @@ router.patch('/customers/:id/kyc', async (req, res, next) => {
     return res.status(400).json({ error: 'Une référence interne au dossier vérifié est requise pour approuver le KYC.' });
   }
   if (targetStatus === 'approved') {
-    const contactVerified = await Customer.exists({ _id: customerId, status: 'active', emailVerifiedAt: { $ne: null }, phoneVerifiedAt: { $ne: null } });
-    if (!contactVerified) return res.status(409).json({ error: 'Le compte doit être actif avec e-mail et téléphone confirmés.' });
+    const contactVerified = await Customer.exists({ _id: customerId, status: 'active', emailVerifiedAt: { $ne: null } });
+    if (!contactVerified) return res.status(409).json({ error: 'Le compte doit être actif et son adresse e-mail confirmée.' });
   }
   let session;
   let updatedCustomer;

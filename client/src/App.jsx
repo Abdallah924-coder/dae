@@ -4029,7 +4029,7 @@ function Admin() {
                 <div className="card-heading">
                   <div>
                     <h2>Supervision des comptes</h2>
-                    <p>Décision manuelle sur les justificatifs reçus par DAE ; statut et motif sont journalisés.</p>
+                    <p>Décision manuelle sur le dossier reçu par DAE ; la vérification du téléphone reste requise pour les retraits. Statut et motif sont journalisés.</p>
                   </div>
                   <button
                     className="button button-outline compact"
@@ -4144,7 +4144,7 @@ function Admin() {
                               )}
                               {customer.kycStatus === 'pending' && (
                                 <>
-                                  <button className="button button-outline compact" disabled={customerActionId === String(customer._id) || customer.status !== 'active' || !customer.emailVerifiedAt || !customer.phoneVerifiedAt} onClick={() => updateCustomerKyc(customer, 'approved')}>Approuver</button>
+                                  <button className="button button-outline compact" disabled={customerActionId === String(customer._id) || customer.status !== 'active' || !customer.emailVerifiedAt} title={customer.status !== 'active' ? 'Le compte doit être actif.' : !customer.emailVerifiedAt ? 'L’adresse e-mail doit être confirmée.' : undefined} onClick={() => updateCustomerKyc(customer, 'approved')}>Approuver</button>
                                   <button className="button button-outline compact" disabled={customerActionId === String(customer._id)} onClick={() => updateCustomerKyc(customer, 'rejected')}>Refuser</button>
                                 </>
                               )}
