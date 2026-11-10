@@ -2561,7 +2561,9 @@ function CustomerAvatar({ customer, large = false }) {
 
 function CustomerPortal() {
   const navigate = useNavigate();
+  const route = useLocation();
   const [customer, setCustomer] = useState(null);
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   const [features, setFeatures] = useState(null);
   const [wallets, setWallets] = useState([]);
   const [balances, setBalances] = useState([]);
@@ -2602,7 +2604,7 @@ function CustomerPortal() {
   const [withdrawalError, setWithdrawalError] = useState('');
   const [withdrawalRefresh, setWithdrawalRefresh] = useState(0);
   const [loading, setLoading] = useState(true);
-  const path = location.pathname.replace(/\/$/, '') || '/compte';
+  const path = route.pathname.replace(/\/$/, '') || '/compte';
   useEffect(() => {
     Promise.all([
       api('/api/account/me'),
@@ -2822,6 +2824,16 @@ function CustomerPortal() {
     ['/verification', 'Vérification', '✓'],
     ['/securite', 'Sécurité', '⌑'],
   ];
+  const primaryMobileSections = sections.filter(([href]) =>
+    ['/compte', '/portefeuille', '/depot', '/retrait'].includes(href),
+  );
+  const moreMobileSections = sections.filter(
+    ([href]) => !primaryMobileSections.some(([primaryHref]) => href === primaryHref),
+  );
+  const moreSectionActive = moreMobileSections.some(([href]) => path === href);
+  useEffect(() => {
+    setMobileMoreOpen(false);
+  }, [route.pathname]);
   const titles = {
     '/compte': 'Vue d’ensemble',
     '/profil': 'Mon profil',
@@ -2862,6 +2874,52 @@ function CustomerPortal() {
             </Link>
           ))}
         </nav>
+        <nav className="customer-mobile-nav" aria-label="Navigation principale">
+          {primaryMobileSections.map(([href, label, icon]) => (
+            <Link
+              key={href}
+              to={href}
+              className={path === href ? 'customer-nav active' : 'customer-nav'}
+              aria-current={path === href ? 'page' : undefined}
+            >
+              <span aria-hidden="true">{icon}</span>
+              {label}
+            </Link>
+          ))}
+          <button
+            type="button"
+            className={`customer-nav customer-more-toggle${mobileMoreOpen || moreSectionActive ? ' active' : ''}`}
+            aria-expanded={mobileMoreOpen}
+            aria-controls="customer-mobile-more-menu"
+            onClick={() => setMobileMoreOpen((open) => !open)}
+          >
+            <span aria-hidden="true">•••</span>
+            Plus
+          </button>
+        </nav>
+        {mobileMoreOpen && (
+          <div className="customer-more-menu" id="customer-mobile-more-menu">
+            {moreMobileSections.map(([href, label, icon]) => (
+              <Link
+                key={href}
+                to={href}
+                className={path === href ? 'customer-more-link active' : 'customer-more-link'}
+                aria-current={path === href ? 'page' : undefined}
+              >
+                <span aria-hidden="true">{icon}</span>
+                {label}
+              </Link>
+            ))}
+            <Link to="/#marches" className="customer-more-link" onClick={() => setMobileMoreOpen(false)}>
+              <span aria-hidden="true">↗</span>
+              Explorer les marchés
+            </Link>
+            <button type="button" className="customer-more-link" onClick={logout}>
+              <span aria-hidden="true">⇥</span>
+              Déconnexion
+            </button>
+          </div>
+        )}
         <div className="customer-sidebar-bottom">
           <Link to="/#marches">Explorer les marchés ↗</Link>
           <button onClick={logout}>Déconnexion</button>
