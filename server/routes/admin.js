@@ -30,7 +30,14 @@ const { Contract, formatEther, formatUnits, getAddress } = require('ethers');
 const { getProvider } = require('../services/bsc');
 const { configForClient, getEarnConfig, validateEarnConfig } = require('../services/earnConfig');
 const { getEarnProtocolStatus } = require('../services/earnProtocols');
+const { getLedgerBalanceAtomic } = require('../services/ledger');
+const { configuredEarnTreasuryAddress } = require('../services/earnTreasury');
 const { canResolveEarnChange } = require('../services/earnChangeApproval');
+const EarnAction = require('../models/EarnAction');
+const EarnAllocation = require('../models/EarnAllocation');
+const EarnAuditLog = require('../models/EarnAuditLog');
+const StakePosition = require('../models/StakePosition');
+const { proposeEarnAction, decideEarnAction } = require('../services/earnOperations');
 
 const router = express.Router();
 router.post('/auth/login', adminAuth.login);
@@ -186,6 +193,168 @@ router.get('/earn/protocols', async (_req, res, next) => {
       });
     }
   } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/earn/actions', async (_req, res, next) => {
+  try {
+    const [actions, allocations, audit, positions] = await Promise.all([
+      EarnAction.find().sort({ createdAt: -1 }).limit(100).lean(),
+      EarnAllocation.find().sort({ createdAt: -1 }).limit(100).lean(),
+      EarnAuditLog.find().sort({ createdAt: -1, _id: -1 }).limit(100).lean(),
+      StakePosition.find({
+        status: { $in: ['PENDING_ALLOCATION', 'WITHDRAWAL_PENDING', 'ACTIVE', 'MATURED'] },
+      }).populate('customerId', 'email').sort({ createdAt: -1 }).limit(100).lean(),
+    ]);
+    return res.json({
+      actions: actions.map((action) => ({
+        ...action,
+        status: action.status === 'pending' && action.expiresAt <= new Date() ? 'expired' : action.status,
+      })),
+      allocations,
+      audit,
+      positions: positions.map((position) => ({
+        ...position,
+        customerEmail: position.customerId?.email || '',
+        customerId: position.customerId?._id || position.customerId,
+      })),
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/earn/accounting', async (_req, res, next) => {
+  try {
+    const accounts = {
+      treasuryCash: ['system:earn:treasury-cash', true],
+      deployedPrincipal: ['system:earn:deployed-principal', true],
+      realizedIncome: ['system:earn:realized-income', false],
+      rewardPool: ['system:earn:reward-pool', false],
+      platformRevenue: ['system:earn:platform-revenue', false],
+      safetyReserve: ['system:earn:safety-reserve', false],
+      capitalContribution: ['system:earn:capital-contribution', false],
+      penalties: ['system:earn:penalties', false],
+    };
+    const ledgerBalances = {};
+    for (const [name, [accountRef, debitNormal]] of Object.entries(accounts)) {
+      const signed = BigInt(await getLedgerBalanceAtomic({
+        accountRef,
+        asset: 'USDT',
+        network: 'BEP20',
+      }));
+      ledgerBalances[name] = (debitNormal ? -signed : signed).toString();
+    }
+    const treasuryAddress = configuredEarnTreasuryAddress();
+    let onchainTreasuryBalanceAtomic = null;
+    if (treasuryAddress) {
+      const token = new Contract(config.bsc.usdtContract, [
+        'function balanceOf(address) view returns (uint256)',
+      ], getProvider());
+      const [chain, amount] = await Promise.all([
+        getProvider().getNetwork(),
+        token.balanceOf(treasuryAddress),
+      ]);
+      if (Number(chain.chainId) !== 56) throw new Error('RPC trésorerie Earn hors BNB Smart Chain.');
+      onchainTreasuryBalanceAtomic = amount.toString();
+    }
+    const reconciled = onchainTreasuryBalanceAtomic !== null &&
+      onchainTreasuryBalanceAtomic === ledgerBalances.treasuryCash;
+    return res.json({
+      asset: 'USDT',
+      network: 'BEP20',
+      decimals: 18,
+      treasuryAddress,
+      ledgerBalances,
+      onchainTreasuryBalanceAtomic,
+      reconciliation: {
+        status: reconciled ? 'matched' : treasuryAddress ? 'mismatch' : 'treasury_not_configured',
+        differenceAtomic: onchainTreasuryBalanceAtomic === null
+          ? null
+          : (BigInt(onchainTreasuryBalanceAtomic) - BigInt(ledgerBalances.treasuryCash)).toString(),
+      },
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post('/earn/actions', async (req, res, next) => {
+  if (!adminAuth.secondAdminConfigured()) {
+    return res.status(503).json({ error: 'Deux administrateurs indépendants sont requis pour les opérations financières.' });
+  }
+  if (!mongoTransactionsReady()) {
+    return res.status(503).json({ error: 'MongoDB en replica set est requis pour les opérations financières DAE Earn.' });
+  }
+  const { type, reason, protocol, txHash } = req.body || {};
+  const positionId = req.body?.positionId;
+  const allocationId = req.body?.allocationId;
+  if (positionId && !mongoose.isValidObjectId(positionId)) {
+    return res.status(400).json({ error: 'Identifiant de position invalide.' });
+  }
+  if (allocationId && !mongoose.isValidObjectId(allocationId)) {
+    return res.status(400).json({ error: 'Identifiant d’allocation invalide.' });
+  }
+  try {
+    const action = await proposeEarnAction({
+      type,
+      actor: req.adminEmail,
+      reason,
+      protocol,
+      txHash,
+      positionId,
+      allocationId,
+    });
+    return res.status(202).json({
+      action: {
+        id: String(action._id),
+        type: action.type,
+        status: action.status,
+        txHash: action.txHash,
+        grossAmountAtomic: action.grossAmountAtomic,
+        expiresAt: action.expiresAt,
+      },
+    });
+  } catch (error) {
+    const status = error.code?.startsWith('ERR_EARN_')
+      ? error.code.includes('DISABLED') ? 503 : 409
+      : error instanceof TypeError ? 400 : 500;
+    if (status === 500) return next(error);
+    return res.status(status).json({ error: error.message, code: error.code });
+  }
+});
+
+router.post('/earn/actions/:id/:decision', async (req, res, next) => {
+  if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ error: 'Identifiant d’action invalide.' });
+  if (!['approve', 'reject'].includes(req.params.decision)) return res.status(404).json({ error: 'Décision inconnue.' });
+  if (!adminAuth.secondAdminConfigured()) {
+    return res.status(503).json({ error: 'Deux administrateurs indépendants sont requis pour les opérations financières.' });
+  }
+  if (!mongoTransactionsReady()) {
+    return res.status(503).json({ error: 'MongoDB en replica set est requis pour appliquer atomiquement cette opération.' });
+  }
+  try {
+    const result = await decideEarnAction(
+      req.params.id,
+      req.adminEmail,
+      req.params.decision,
+      req.body?.reason,
+    );
+    if (result?.error) return res.status(result.status).json({ error: result.error });
+    if (!result) return res.status(404).json({ error: 'Action introuvable, expirée ou déjà traitée.' });
+    return res.json({
+      action: {
+        id: String(result.action._id),
+        status: result.action.status,
+        approverEmail: result.action.approverEmail,
+      },
+      ledgerReference: result.ledgerReference,
+    });
+  } catch (error) {
+    if (error.code === 'ERR_LEDGER_INSUFFICIENT_FUNDS') return res.status(409).json({ error: 'Fonds insuffisants dans le compartiment comptable de trésorerie.' });
+    if (error.code === 'ERR_EARN_PENALTY_FUNDS_REQUIRED') return res.status(409).json({ error: error.message, code: error.code });
+    if (error.code?.startsWith('ERR_EARN_')) return res.status(409).json({ error: error.message, code: error.code });
     return next(error);
   }
 });
@@ -675,9 +844,9 @@ router.get('/readiness', async (_req, res, next) => {
     earn: {
       catalogEnabled: true,
       productionEnabled: false,
-      subscriptionsEnabled: false,
-      allocationsEnabled: false,
-      rewardsEnabled: false,
+      subscriptionsEnabled: earn.subscriptionsEnabled,
+      allocationsEnabled: earn.allocationsEnabled,
+      rewardsEnabled: earn.rewardsEnabled,
       configVersion: earn.configVersion,
       allocationLimitBps: earn.allocationLimitBps,
       dualApprovalConfigured: adminAuth.secondAdminConfigured(),

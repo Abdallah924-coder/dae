@@ -19,6 +19,7 @@
     "bsc:deposits": "node server/jobs/indexBscDeposits.js",
     "bsc:deposits:local": "node -r ./server/tools/loadLocalEnv.js server/jobs/indexBscDeposits.js",
     "bsc:signer": "node server/jobs/runBscSigner.js",
+    "earn:rewards": "node server/jobs/distributeEarnRewards.js",
     "bsc:derive-config": "node server/tools/printBscPublicConfig.js"
   },
   "keywords": [],

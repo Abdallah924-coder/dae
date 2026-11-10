@@ -11,6 +11,9 @@ function configForClient(config) {
   const source = config || defaultEarnConfig();
   return {
     configVersion: source.configVersion || 0,
+    subscriptionsEnabled: Boolean(source.subscriptionsEnabled),
+    allocationsEnabled: Boolean(source.allocationsEnabled),
+    rewardsEnabled: Boolean(source.rewardsEnabled),
     allocationLimitBps: source.allocationLimitBps,
     protocolLimitsBps: source.protocolLimitsBps,
     revenueSplitBps: source.revenueSplitBps,
@@ -20,9 +23,6 @@ function configForClient(config) {
       minimumAmount: formatUnits(product.minimumAmountAtomic, 18),
     })),
     productionEnabled: false,
-    subscriptionsEnabled: false,
-    allocationsEnabled: false,
-    rewardsEnabled: false,
   };
 }
 
@@ -41,6 +41,9 @@ function validateEarnConfig(input) {
     return value;
   };
   const allocationLimitBps = integer(input.allocationLimitBps, 'La limite globale', 1000);
+  for (const key of ['subscriptionsEnabled', 'allocationsEnabled', 'rewardsEnabled']) {
+    if (typeof input[key] !== 'boolean') throw new TypeError(`Le paramètre ${key} doit être booléen.`);
+  }
   const protocolLimitsBps = {
     venus: integer(input.protocolLimitsBps?.venus, 'La limite Venus', allocationLimitBps),
     aaveV3: integer(input.protocolLimitsBps?.aaveV3, 'La limite Aave V3', allocationLimitBps),
@@ -94,7 +97,16 @@ function validateEarnConfig(input) {
     };
   });
 
-  return { allocationLimitBps, protocolLimitsBps, revenueSplitBps, earlyWithdrawal, products };
+  return {
+    subscriptionsEnabled: input.subscriptionsEnabled,
+    allocationsEnabled: input.allocationsEnabled,
+    rewardsEnabled: input.rewardsEnabled,
+    allocationLimitBps,
+    protocolLimitsBps,
+    revenueSplitBps,
+    earlyWithdrawal,
+    products,
+  };
 }
 
 module.exports = { configForClient, getEarnConfig, validateEarnConfig };

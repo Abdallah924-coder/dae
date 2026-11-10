@@ -15,6 +15,9 @@ const productSchema = new mongoose.Schema({
 const earnConfigSchema = new mongoose.Schema({
   key: { type: String, enum: ['main'], default: 'main', unique: true },
   configVersion: { type: Number, required: true, min: 1 },
+  subscriptionsEnabled: { type: Boolean, default: false },
+  allocationsEnabled: { type: Boolean, default: false },
+  rewardsEnabled: { type: Boolean, default: false },
   allocationLimitBps: { type: Number, required: true, min: 0, max: 1000, validate: Number.isInteger },
   protocolLimitsBps: {
     venus: { type: Number, required: true, min: 0, max: 1000, validate: Number.isInteger },

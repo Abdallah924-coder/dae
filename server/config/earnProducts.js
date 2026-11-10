@@ -2,6 +2,9 @@
 
 const DEFAULT_EARN_CONFIG = Object.freeze({
   configVersion: 0,
+  subscriptionsEnabled: false,
+  allocationsEnabled: false,
+  rewardsEnabled: false,
   allocationLimitBps: 1000,
   protocolLimitsBps: {
     venus: 500,

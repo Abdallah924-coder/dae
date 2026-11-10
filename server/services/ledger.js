@@ -13,10 +13,39 @@ const POSTED_TYPES = new Set([
   'p2p_transfer',
   'staking_lock',
   'staking_release',
+  'staking_reward',
+  'earn_revenue',
+  'earn_revenue_split',
   'adjustment',
 ]);
 const ATOMIC_AMOUNT_RE = /^[1-9][0-9]{0,77}$/;
 const CUSTOMER_ACCOUNT_REF_RE = /^customer:[a-f\d]{24}:(?:available|reserved|staked)$/i;
+const EARN_ACCOUNT_NORMAL_SIDE = new Map([
+  ['system:earn:treasury-cash', 'debit'],
+  ['system:earn:deployed-principal', 'debit'],
+  ['system:earn:realized-income', 'credit'],
+  ['system:earn:reward-pool', 'credit'],
+  ['system:earn:platform-revenue', 'credit'],
+  ['system:earn:safety-reserve', 'credit'],
+  ['system:earn:capital-contribution', 'credit'],
+  ['system:earn:penalties', 'credit'],
+]);
+
+function protectedAccountNormalSide(accountRef) {
+  if (CUSTOMER_ACCOUNT_REF_RE.test(accountRef)) return 'credit';
+  return EARN_ACCOUNT_NORMAL_SIDE.get(accountRef) || null;
+}
+
+function getNormalDelta(side, amountAtomic, normalSide) {
+  const amount = BigInt(amountAtomic);
+  return side === normalSide ? amount : -amount;
+}
+
+function isProtectedBalanceSufficient(currentSignedAtomic, normalSide, delta) {
+  const signed = BigInt(currentSignedAtomic);
+  const currentNormal = normalSide === 'credit' ? signed : -signed;
+  return currentNormal + BigInt(delta) >= 0n;
+}
 
 function canonicalize(value) {
   if (Array.isArray(value)) return value.map(canonicalize);
@@ -66,7 +95,9 @@ function normalizePostings(postings) {
         !posting.accountRef ||
         !posting.asset ||
         !posting.network ||
-        !['debit', 'credit'].includes(posting.side),
+        !['debit', 'credit'].includes(posting.side) ||
+        (posting.accountRef.toLowerCase().startsWith('system:earn:') &&
+          !EARN_ACCOUNT_NORMAL_SIDE.has(posting.accountRef.toLowerCase())),
     )
   ) {
     throw new TypeError('Chaque posting doit définir compte, actif, réseau et sens');
@@ -115,28 +146,30 @@ async function postLedgerTransaction(input, { session: providedSession } = {}) {
     throw new TypeError('L’auteur du posting est requis');
   }
   const requestHash = payloadHash(payload);
-  const customerDeltas = new Map();
+  const protectedDeltas = new Map();
   for (const posting of postings) {
-    if (!CUSTOMER_ACCOUNT_REF_RE.test(posting.accountRef)) continue;
+    const normalSide = protectedAccountNormalSide(posting.accountRef);
+    if (!normalSide) continue;
     const key = JSON.stringify([posting.accountRef, posting.asset, posting.network]);
-    const current = customerDeltas.get(key) || {
+    const current = protectedDeltas.get(key) || {
       key,
       accountRef: posting.accountRef,
       asset: posting.asset,
       network: posting.network,
       decimals: posting.decimals,
+      normalSide,
       delta: 0n,
     };
     if (current.decimals !== posting.decimals) {
       throw new TypeError(`Précision incohérente dans les postings pour ${key}`);
     }
     const amount = BigInt(posting.amountAtomic);
-    current.delta += posting.side === 'credit' ? amount : -amount;
-    customerDeltas.set(key, current);
+    current.delta += getNormalDelta(posting.side, amount, normalSide);
+    protectedDeltas.set(key, current);
   }
 
   try {
-    if (customerDeltas.size === 0) {
+    if (protectedDeltas.size === 0) {
       const transaction = new LedgerTransaction({
         reference: `LED-${crypto.randomBytes(12).toString('base64url')}`,
         idempotencyKey,
@@ -153,7 +186,7 @@ async function postLedgerTransaction(input, { session: providedSession } = {}) {
       throw error;
     }
 
-    const lockedBalances = [...customerDeltas.values()].sort((left, right) => left.key.localeCompare(right.key));
+    const lockedBalances = [...protectedDeltas.values()].sort((left, right) => left.key.localeCompare(right.key));
     for (const balance of lockedBalances) {
       try {
         await LedgerAccountLock.updateOne(
@@ -212,7 +245,7 @@ async function postLedgerTransaction(input, { session: providedSession } = {}) {
             currentAtomic += posting.side === 'credit' ? amount : -amount;
           }
         }
-        if (balance.delta < 0n && currentAtomic + balance.delta < 0n) {
+        if (!isProtectedBalanceSufficient(currentAtomic, balance.normalSide, balance.delta)) {
           const insufficient = new Error(`Solde insuffisant dans le compartiment ${balance.accountRef}`);
           insufficient.code = 'ERR_LEDGER_INSUFFICIENT_FUNDS';
           throw insufficient;
@@ -255,7 +288,7 @@ async function postLedgerTransaction(input, { session: providedSession } = {}) {
   }
 }
 
-async function getLedgerBalancesAtomic(accountRef) {
+async function getLedgerBalancesAtomic(accountRef, { session } = {}) {
   if (!accountRef) throw new TypeError('Compte requis pour lire les soldes');
   const normalizedAccountRef = String(accountRef).trim();
   if (!normalizedAccountRef) throw new TypeError('Compte requis pour lire les soldes');
@@ -264,6 +297,7 @@ async function getLedgerBalancesAtomic(accountRef) {
     postings: { $elemMatch: { accountRef: normalizedAccountRef } },
   })
     .select('postings')
+    .session(session || null)
     .lean();
   const balances = new Map();
   for (const transaction of transactions) {
@@ -292,11 +326,11 @@ async function getLedgerBalancesAtomic(accountRef) {
     .sort((left, right) => `${left.asset}:${left.network}`.localeCompare(`${right.asset}:${right.network}`));
 }
 
-async function getLedgerBalanceAtomic({ accountRef, asset, network }) {
+async function getLedgerBalanceAtomic({ accountRef, asset, network }, options = {}) {
   if (!accountRef || !asset || !network) {
     throw new TypeError('Compte, actif et réseau sont requis pour lire le solde');
   }
-  const balances = await getLedgerBalancesAtomic(accountRef);
+  const balances = await getLedgerBalancesAtomic(accountRef, options);
   return (
     balances.find(
       (balance) =>
@@ -379,4 +413,6 @@ module.exports = {
   customerLedgerAccountRef,
   getCustomerLedgerBalances,
   formatAtomicAmount,
+  getNormalDelta,
+  isProtectedBalanceSufficient,
 };

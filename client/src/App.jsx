@@ -136,6 +136,14 @@ function formatDecimalString(value) {
   const grouped = new Intl.NumberFormat('fr-FR').format(whole);
   return `${grouped}${fraction ? `,${fraction}` : ''}`;
 }
+function formatAtomicUnits(value, decimals = 18) {
+  const raw = String(value ?? '0');
+  if (!/^(0|[1-9]\d*)$/.test(raw) || !Number.isInteger(decimals) || decimals < 0 || decimals > 36) return '—';
+  const digits = raw.padStart(decimals + 1, '0');
+  const whole = decimals ? digits.slice(0, -decimals) : digits;
+  const fraction = decimals ? digits.slice(-decimals).replace(/0+$/, '') : '';
+  return fraction ? `${whole}.${fraction}` : whole;
+}
 function safeExchangeRedirect(search) {
   const requested = new URLSearchParams(search).get('next') || '';
   if (!requested.startsWith('/acheter') && !requested.startsWith('/vendre')) return '/compte';
@@ -2513,18 +2521,96 @@ function CustomerFundingHistory({ type }) {
 
 function CustomerEarnPage() {
   const [catalog, setCatalog] = useState(null);
+  const [positions, setPositions] = useState([]);
+  const [amounts, setAmounts] = useState({});
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [busy, setBusy] = useState('');
+  const [loadingPositions, setLoadingPositions] = useState(true);
+  const formatEarnAtomic = (value) => {
+    const digits = String(value || '0').padStart(19, '0');
+    const whole = digits.slice(0, -18);
+    const fraction = digits.slice(-18).replace(/0+$/, '');
+    return fraction ? `${whole}.${fraction}` : whole;
+  };
+  const loadPositions = useCallback(async () => {
+    setLoadingPositions(true);
+    try {
+      const result = await api('/api/earn/positions');
+      setPositions(result.positions || []);
+    } catch (requestError) {
+      setError(requestError.message || 'Impossible de charger vos placements.');
+    } finally {
+      setLoadingPositions(false);
+    }
+  }, []);
   useEffect(() => {
     let active = true;
     api('/api/earn/catalog')
       .then((result) => {
-        if (active) setCatalog(result);
+        if (active) {
+          setCatalog(result);
+          setAmounts(Object.fromEntries((result.products || []).map((product) => [
+            product.productId,
+            product.minimumAmount,
+          ])));
+        }
       })
       .catch((requestError) => {
         if (active) setError(requestError.message || 'Le catalogue DAE Earn est indisponible.');
       });
+    loadPositions();
     return () => { active = false; };
-  }, []);
+  }, [loadPositions]);
+  const subscribe = async (product) => {
+    setBusy(product.productId);
+    setError('');
+    setNotice('');
+    try {
+      const result = await api('/api/earn/positions', {
+        method: 'POST',
+        headers: { 'Idempotency-Key': createClientId() },
+        body: JSON.stringify({
+          productId: product.productId,
+          amount: amounts[product.productId],
+          acceptedTermsVersion: 'DAE_EARN_V1',
+        }),
+      });
+      setNotice(`Placement créé et verrouillé au ledger. Référence ${result.position.ledgerReference}. En attente d’allocation DAE.`);
+      await loadPositions();
+    } catch (requestError) {
+      setError(requestError.message || 'La souscription a échoué.');
+    } finally {
+      setBusy('');
+    }
+  };
+  const requestWithdrawal = async (position) => {
+    const penalty = ['ACTIVE', 'MATURED'].includes(position.status) && position.maturesAt && new Date(position.maturesAt) > new Date()
+      ? BigInt(position.totalRewardsPaidAtomic || '0') * BigInt(position.creditedRewardsPenaltyBps || 0) / 10_000n
+      : 0n;
+    const penaltyText = formatEarnAtomic(penalty.toString());
+    if (!window.confirm(
+      penalty > 0n
+        ? `Confirmer le retrait anticipé ? Une pénalité de ${penaltyText} USDT sur les récompenses déjà créditées sera débitée du solde disponible, jamais du capital. Les récompenses futures seront perdues.`
+        : 'Demander le retrait de ce placement ? DAE devra d’abord récupérer les fonds et vérifier la liquidité. Aucun capital ne sera crédité avant validation.',
+    )) return;
+    setBusy(position.id);
+    setError('');
+    setNotice('');
+    try {
+      const result = await api(`/api/earn/positions/${encodeURIComponent(position.id)}/withdrawal`, {
+        method: 'POST',
+        body: JSON.stringify({ acceptEarlyPenalty: true }),
+      });
+      setNotice(`${result.message} Pénalité confirmée : ${result.penalty} USDT.`);
+      await loadPositions();
+    } catch (requestError) {
+      setError(requestError.message || 'La demande de retrait a échoué.');
+    } finally {
+      setBusy('');
+    }
+  };
 
   return (
     <>
@@ -2532,15 +2618,15 @@ function CustomerEarnPage() {
         <span className="eyebrow plain">DAE EARN · RENDEMENTS DEFI</span>
         <h2>Faites travailler vos USDT, en toute transparence.</h2>
         <p>
-          Les taux affichés sont des objectifs indicatifs, pas une promesse de rendement. Les
-          souscriptions, allocations et distributions sont désactivées tant que les revenus nets,
-          les réserves et les contrôles ne sont pas validés.
+          Les APY sont des objectifs indicatifs, pas une promesse de rendement. Le capital est
+          débité du solde disponible et verrouillé au ledger; aucune récompense n’est garantie.
         </p>
         <div className="customer-earn-status" role="status">
           <i /> {catalog?.message || 'Les produits DAE Earn ne sont pas encore ouverts.'}
         </div>
       </section>
       {error && <Notice>{error}</Notice>}
+      {notice && <p className="customer-earn-status" role="status">{notice}</p>}
       {!catalog && !error && <p className="customer-history-pagination">Chargement du catalogue…</p>}
       {catalog && (
         <section className="customer-earn-products" aria-label="Produits DAE Earn">
@@ -2556,22 +2642,78 @@ function CustomerEarnPage() {
                 <div><dt>Retrait</dt><dd>{product.flexible ? 'Selon les liquidités disponibles' : 'Capital bloqué à échéance'}</dd></div>
                 <div><dt>Récompenses</dt><dd>Calculées quotidiennement si financées</dd></div>
               </dl>
-              <button className="button button-outline" disabled title="Les souscriptions ne sont pas ouvertes.">
-                Souscriptions bientôt disponibles
+              <label className="field-label">
+                Montant à verrouiller (USDT)
+                <input
+                  type="number"
+                  min={product.minimumAmount}
+                  step="0.000000000000000001"
+                  value={amounts[product.productId] || ''}
+                  onChange={(event) => setAmounts((current) => ({
+                    ...current,
+                    [product.productId]: event.target.value,
+                  }))}
+                />
+              </label>
+              <button
+                className="button button-primary"
+                disabled={!catalog.subscriptionsEnabled || !acceptedTerms || busy === product.productId}
+                onClick={() => subscribe(product)}
+                title={!catalog.subscriptionsEnabled ? 'Les souscriptions sont fermées par l’administration.' : ''}
+              >
+                {busy === product.productId ? 'Verrouillage…' : 'Souscrire et verrouiller'}
               </button>
             </article>
           ))}
         </section>
       )}
+      <section className="customer-module-card">
+        <label className="field-label earn-publish-control">
+          <input
+            type="checkbox"
+            checked={acceptedTerms}
+            onChange={(event) => setAcceptedTerms(event.target.checked)}
+          />
+          J’accepte que le capital soit verrouillé dans mon compte jusqu’à l’échéance ou au traitement
+          d’un retrait; les APY sont indicatifs et les récompenses ne sont versées que si DAE a reçu
+          des revenus réels. Un retrait anticipé peut annuler les récompenses futures et appliquer la
+          pénalité affichée sur les récompenses déjà créditées.
+        </label>
+      </section>
       <section className="customer-module-card customer-earn-empty">
         <span className="eyebrow plain">MES PLACEMENTS</span>
-        <h3>Aucun nouveau placement DAE Earn</h3>
-        <p>
-          Aucun placement ni récompense ne sera simulé. Les positions historiques éventuelles
-          restent consultables ci-dessous.
-        </p>
+        <h3>Mes placements</h3>
+        {loadingPositions && <p>Chargement des placements…</p>}
+        {!loadingPositions && positions.length === 0 && <p>Aucun placement DAE Earn.</p>}
+        <div className="earn-customer-positions">
+          {positions.map((position) => (
+            <article key={position.id}>
+              <strong>{position.productId} · {formatEarnAtomic(position.amount)} USDT</strong>
+              <small>
+                Statut : {position.status} · APY indicatif {(position.rewardRateBps / 100).toFixed(2)} % ·{' '}
+                Récompenses versées {formatEarnAtomic(position.totalRewardsPaid)} USDT
+              </small>
+              {position.startsAt && <small>Début {new Date(position.startsAt).toLocaleDateString('fr-FR')}</small>}
+              {position.maturesAt && <small>Échéance {new Date(position.maturesAt).toLocaleDateString('fr-FR')}</small>}
+              {position.status === 'WITHDRAWAL_PENDING' && <small>Retrait en traitement par DAE; crédit non effectué avant récupération des fonds.</small>}
+              {['PENDING_ALLOCATION', 'ACTIVE', 'MATURED'].includes(position.status) && (
+                <button
+                  className="button button-outline compact"
+                  disabled={busy === position.id}
+                  onClick={() => requestWithdrawal(position)}
+                >
+                  Demander un retrait
+                </button>
+              )}
+              {position.rewards?.map((reward) => (
+                <small key={reward.date}>
+                  {reward.date} · calcul {reward.requested} USDT · versé {reward.paid} USDT · {reward.status}
+                </small>
+              ))}
+            </article>
+          ))}
+        </div>
       </section>
-      <CustomerFundingHistory type="staking" />
     </>
   );
 }
@@ -3983,6 +4125,11 @@ function Admin() {
   const [earnConfig, setEarnConfig] = useState(null);
   const [earnAudit, setEarnAudit] = useState([]);
   const [earnProposals, setEarnProposals] = useState([]);
+  const [earnActions, setEarnActions] = useState([]);
+  const [earnAllocations, setEarnAllocations] = useState([]);
+  const [earnOperationalPositions, setEarnOperationalPositions] = useState([]);
+  const [earnAccounting, setEarnAccounting] = useState(null);
+  const [earnActionBusy, setEarnActionBusy] = useState('');
   const [earnCurrentAdmin, setEarnCurrentAdmin] = useState('');
   const [earnSecondAdminConfigured, setEarnSecondAdminConfigured] = useState(false);
   const [earnProtocolStatus, setEarnProtocolStatus] = useState(null);
@@ -4030,7 +4177,7 @@ function Admin() {
   const load = useCallback(async () => {
     if (!token) return;
     try {
-      const [d, r, s, readinessState, custodyBalances, earn, earnHistory, earnProtocols, earnChangeQueue] = await Promise.all([
+      const [d, r, s, readinessState, custodyBalances, earn, earnHistory, earnProtocols, earnChangeQueue, earnOps, earnLedger] = await Promise.all([
         api('/api/admin/dashboard', { admin: true }),
         api('/api/admin/rates', { admin: true }),
         api('/api/admin/settings', { admin: true }),
@@ -4040,6 +4187,9 @@ function Admin() {
         api('/api/admin/earn/audit', { admin: true }),
         api('/api/admin/earn/protocols', { admin: true }),
         api('/api/admin/earn/proposals', { admin: true }),
+        api('/api/admin/earn/actions', { admin: true }),
+        api('/api/admin/earn/accounting', { admin: true })
+          .catch((accountingError) => ({ error: accountingError.message || 'Réconciliation indisponible.' })),
       ]);
       setDashboard(d);
       setRates(r);
@@ -4052,6 +4202,10 @@ function Admin() {
       setEarnProposals(earnChangeQueue.proposals || []);
       setEarnCurrentAdmin(earnChangeQueue.currentAdmin || '');
       setEarnSecondAdminConfigured(Boolean(earnChangeQueue.secondAdminConfigured));
+      setEarnActions(earnOps.actions || []);
+      setEarnAllocations(earnOps.allocations || []);
+      setEarnOperationalPositions(earnOps.positions || []);
+      setEarnAccounting(earnLedger);
       if (r[0])
         setRateForm({
           buyRate: r[0].buyRate,
@@ -4281,6 +4435,9 @@ function Admin() {
     try {
       if (!earnConfig) return;
       const config = {
+        subscriptionsEnabled: earnConfig.subscriptionsEnabled,
+        allocationsEnabled: earnConfig.allocationsEnabled,
+        rewardsEnabled: earnConfig.rewardsEnabled,
         allocationLimitBps: earnConfig.allocationLimitBps,
         protocolLimitsBps: earnConfig.protocolLimitsBps,
         revenueSplitBps: earnConfig.revenueSplitBps,
@@ -4334,6 +4491,68 @@ function Admin() {
       notify(decisionError.message, true);
     } finally {
       setEarnDecisionBusy('');
+    }
+  }
+  async function proposeEarnFinancialAction(type, target = {}) {
+    if (!earnSecondAdminConfigured) {
+      notify('Deux identités administrateur distinctes sont requises.', true);
+      return;
+    }
+    const body = { type, ...target };
+    if (type === 'allocate_position') {
+      body.protocol = String(window.prompt('Protocole utilisé par DAE (venus ou aaveV3) :') || '').trim();
+      if (!['venus', 'aaveV3'].includes(body.protocol)) return;
+      body.txHash = String(window.prompt('Hash BSC du dépôt USDT fait par la trésorerie DAE :') || '').trim();
+      if (!body.txHash) return;
+    } else if (type === 'redeem_allocation') {
+      body.txHash = String(window.prompt('Hash BSC du retrait de fonds du protocole vers la trésorerie DAE :') || '').trim();
+      if (!body.txHash) return;
+      notify(`Le système affectera d’abord ${formatAtomicUnits(target.outstandingPrincipalAtomic)} USDT au principal; seul le surplus réellement reçu sera traité comme rendement.`);
+    } else if (type === 'fund_treasury') {
+      body.txHash = String(window.prompt('Hash BSC du dépôt USDT externe vers la trésorerie Earn DAE :') || '').trim();
+      if (!body.txHash) return;
+    }
+    body.reason = String(window.prompt('Motif de l’opération financière (minimum 8 caractères) :') || '').trim();
+    if (body.reason.length < 8) return;
+    if (!window.confirm(
+      'Soumettre cette opération à vérification et approbation par le second administrateur ? Aucun fonds ne sera crédité avant cette approbation.',
+    )) return;
+    setEarnActionBusy(type);
+    try {
+      const result = await api('/api/admin/earn/actions', {
+        method: 'POST',
+        admin: true,
+        body: JSON.stringify(body),
+      });
+      notify(`Action ${result.action.id} soumise; l’autre administrateur doit approuver.`);
+      await load();
+    } catch (actionError) {
+      notify(actionError.message, true);
+    } finally {
+      setEarnActionBusy('');
+    }
+  }
+  async function decideEarnFinancialAction(action, decision) {
+    let reason = '';
+    if (decision === 'reject') {
+      reason = String(window.prompt('Motif du refus (minimum 8 caractères) :') || '').trim();
+      if (reason.length < 8) return;
+    } else if (!window.confirm(
+      `Appliquer l’action ${action.type} proposée par ${action.proposerEmail} ? Les preuves on-chain et les limites seront revalidées.`,
+    )) return;
+    setEarnActionBusy(String(action._id));
+    try {
+      await api(`/api/admin/earn/actions/${encodeURIComponent(action._id)}/${decision}`, {
+        method: 'POST',
+        admin: true,
+        body: JSON.stringify({ reason }),
+      });
+      notify(decision === 'approve' ? 'Action financière appliquée et inscrite au ledger.' : 'Action financière refusée.');
+      await load();
+    } catch (actionError) {
+      notify(actionError.message, true);
+    } finally {
+      setEarnActionBusy('');
     }
   }
   async function saveSettings(e) {
@@ -5166,8 +5385,53 @@ function Admin() {
                   {earnSecondAdminConfigured
                     ? `Connecté comme ${earnCurrentAdmin}. Une seconde identité admin valide et distincte est configurée.`
                     : `Connecté comme ${earnCurrentAdmin}. Configurez ADMIN_SECOND_EMAIL et ADMIN_SECOND_PASSWORD avant toute proposition Earn.`}
-                  Les mouvements de fonds et récompenses restent désactivés.
+                  Chaque activation est proposée puis confirmée par le second administrateur.
                 </div>
+                <h3 className="subheading">Contrôles des opérations (double approbation obligatoire)</h3>
+                <div className="earn-operation-toggles">
+                  {[
+                    ['subscriptionsEnabled', 'Accepter les souscriptions et verrouiller les fonds au ledger'],
+                    ['allocationsEnabled', 'Autoriser la validation d’allocations après preuve on-chain'],
+                    ['rewardsEnabled', 'Autoriser la distribution des récompenses financées'],
+                  ].map(([key, label]) => (
+                    <label className="field-label earn-publish-control" key={key}>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(earnConfig[key])}
+                        onChange={(event) => setEarnConfig((current) => ({
+                          ...current,
+                          [key]: event.target.checked,
+                        }))}
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+                <div className="earn-operation-toolbar">
+                  <button
+                    type="button"
+                    className="button button-outline"
+                    disabled={earnActionBusy === 'seed_treasury' || !earnSecondAdminConfigured}
+                    onClick={() => proposeEarnFinancialAction('seed_treasury')}
+                  >
+                    {earnActionBusy === 'seed_treasury' ? 'Lecture BSC…' : 'Proposer le solde initial depuis le wallet DAE'}
+                  </button>
+                  <button
+                    type="button"
+                    className="button button-outline"
+                    disabled={earnActionBusy === 'fund_treasury' || !earnSecondAdminConfigured}
+                    onClick={() => proposeEarnFinancialAction('fund_treasury')}
+                  >
+                    {earnActionBusy === 'fund_treasury' ? 'Vérification…' : 'Enregistrer un financement trésorerie'}
+                  </button>
+                </div>
+                <p className="card-description">
+                  L’initialisation enregistre comme apport la totalité du solde USDT on-chain observé;
+                  elle doit être approuvée par le second administrateur. Les opérations restent fermées
+                  par défaut. N’activez pas une option avant que la
+                  trésorerie, les contrôles financiers et l’obligation de paiement correspondante
+                  soient opérationnels.
+                </p>
                 <h3 className="subheading">Lecture BNB Smart Chain · sans transaction</h3>
                 <p className="card-description">
                   Snapshot RPC au bloc {earnProtocolStatus?.blockNumber ?? '—'} ·{' '}
@@ -5292,6 +5556,157 @@ function Admin() {
                     </fieldset>
                   ))}
                 </div>
+              </section>
+              <section className="admin-card">
+                <h2>Opérations et contrôle croisé</h2>
+                <p className="card-description">
+                  Les opérations de trésorerie sont exécutées par DAE hors plateforme. Le système vérifie
+                  les reçus BSC confirmés; aucune clé privée n’est utilisée par l’application.
+                </p>
+                <h3 className="subheading">Actions en attente d’un second administrateur</h3>
+                {earnActions.filter((action) => action.status === 'pending').length ? (
+                  <div className="earn-admin-audit">
+                    {earnActions.filter((action) => action.status === 'pending').map((action) => (
+                      <article key={action._id}>
+                        <strong>{action.type} · {formatAtomicUnits(action.grossAmountAtomic)} USDT</strong>
+                        <small>
+                          Par {action.proposerEmail} · expire {new Date(action.expiresAt).toLocaleString('fr-FR')}
+                        </small>
+                        {action.txHash && <small>Tx BSC : {action.txHash}</small>}
+                        <p>{action.reason}</p>
+                        {action.status === 'pending' &&
+                          action.proposerEmail !== earnCurrentAdmin &&
+                          earnSecondAdminConfigured && (
+                            <div className="earn-proposal-actions">
+                              <button
+                                type="button"
+                                className="button button-primary compact"
+                                disabled={earnActionBusy === action._id}
+                                onClick={() => decideEarnFinancialAction(action, 'approve')}
+                              >
+                                Approuver et écrire au ledger
+                              </button>
+                              <button
+                                type="button"
+                                className="button button-outline compact"
+                                disabled={earnActionBusy === action._id}
+                                onClick={() => decideEarnFinancialAction(action, 'reject')}
+                              >
+                                Refuser
+                              </button>
+                            </div>
+                          )}
+                      </article>
+                    ))}
+                  </div>
+                ) : <p className="customer-history-pagination">Aucune action financière en attente.</p>}
+
+                <h3 className="subheading">Placements à traiter</h3>
+                <div className="earn-admin-audit">
+                  {earnOperationalPositions.map((position) => {
+                    const allocation = earnAllocations.find((item) => String(item.positionId) === String(position._id));
+                    return (
+                      <article key={position._id}>
+                        <strong>{position.productId} · {formatAtomicUnits(position.amountAtomic)} USDT · {position.status}</strong>
+                        <small>{position.customerEmail} · créé le {new Date(position.createdAt).toLocaleString('fr-FR')}</small>
+                        {allocation && (
+                          <small>
+                            {allocation.protocol} · principal restant {formatAtomicUnits(allocation.outstandingPrincipalAtomic)} USDT · {allocation.status}
+                          </small>
+                        )}
+                        {position.status === 'PENDING_ALLOCATION' && (
+                          <button
+                            type="button"
+                            className="button button-outline compact"
+                            disabled={earnActionBusy === 'allocate_position' || !earnSecondAdminConfigured}
+                            onClick={() => proposeEarnFinancialAction('allocate_position', { positionId: String(position._id) })}
+                          >
+                            Vérifier et proposer l’activation (après allocation DAE)
+                          </button>
+                        )}
+                        {position.status === 'WITHDRAWAL_PENDING' && (!allocation || allocation.status === 'closed') && (
+                          <button
+                            type="button"
+                            className="button button-primary compact"
+                            disabled={earnActionBusy === 'settle_withdrawal' || !earnSecondAdminConfigured}
+                            onClick={() => proposeEarnFinancialAction('settle_withdrawal', { positionId: String(position._id) })}
+                          >
+                            Proposer le déverrouillage ledger
+                          </button>
+                        )}
+                        {position.status === 'WITHDRAWAL_PENDING' && allocation?.status === 'active' && (
+                          <small>Retrait demandé : effectuez la récupération du protocole, puis soumettez sa preuve ci-dessous.</small>
+                        )}
+                      </article>
+                    );
+                  })}
+                </div>
+                <h3 className="subheading">Allocations protocolaires DAE</h3>
+                <div className="earn-admin-audit">
+                  {earnAllocations.filter((allocation) => allocation.status === 'active').map((allocation) => (
+                    <article key={allocation._id}>
+                      <strong>{allocation.protocol} · principal restant {formatAtomicUnits(allocation.outstandingPrincipalAtomic)} USDT</strong>
+                      <small>Position {String(allocation.positionId).slice(-8)} · Tx {allocation.txHash}</small>
+                      <button
+                        type="button"
+                        className="button button-outline compact"
+                        disabled={earnActionBusy === 'redeem_allocation' || !earnSecondAdminConfigured}
+                        onClick={() => proposeEarnFinancialAction('redeem_allocation', {
+                          allocationId: String(allocation._id),
+                          outstandingPrincipalAtomic: allocation.outstandingPrincipalAtomic,
+                        })}
+                      >
+                        Vérifier un retrait / rendement réalisé
+                      </button>
+                    </article>
+                  ))}
+                  {!earnAllocations.some((allocation) => allocation.status === 'active') && (
+                    <p className="customer-history-pagination">Aucune allocation active.</p>
+                  )}
+                </div>
+              </section>
+              <section className="admin-card">
+                <h2>Trésorerie et réconciliation USDT</h2>
+                {earnAccounting?.error ? (
+                  <Notice>{earnAccounting.error}</Notice>
+                ) : earnAccounting ? (
+                  <>
+                    <div className={`customer-earn-status ${earnAccounting.reconciliation.status === 'matched' ? 'earn-reconciled' : ''}`} role="status">
+                      <i />
+                      Réconciliation trésorerie : {earnAccounting.reconciliation.status}
+                      {earnAccounting.treasuryAddress && ` · ${earnAccounting.treasuryAddress}`}
+                    </div>
+                    <div className="earn-accounting-grid">
+                      {[
+                        ['treasuryCash', 'Trésorerie USDT'],
+                        ['deployedPrincipal', 'Principal placé'],
+                        ['realizedIncome', 'Revenus réalisés à répartir'],
+                        ['rewardPool', 'Pool récompenses'],
+                        ['platformRevenue', 'Revenus DAE (20 %)'],
+                        ['safetyReserve', 'Réserve sécurité (10 %)'],
+                        ['capitalContribution', 'Apports trésorerie'],
+                        ['penalties', 'Pénalités acceptées'],
+                      ].map(([key, label]) => (
+                        <article key={key}>
+                          <small>{label}</small>
+                          <strong>{formatAtomicUnits(earnAccounting.ledgerBalances[key])} USDT</strong>
+                        </article>
+                      ))}
+                      <article>
+                        <small>USDT observés sur le wallet de trésorerie</small>
+                        <strong>
+                          {earnAccounting.onchainTreasuryBalanceAtomic === null
+                            ? '—'
+                            : `${formatAtomicUnits(earnAccounting.onchainTreasuryBalanceAtomic)} USDT`}
+                        </strong>
+                      </article>
+                    </div>
+                    <small className="card-description">
+                      Le rapprochement compare le cash du ledger Earn au solde BEP-20 du wallet configuré.
+                      Tout écart bloque l’éligibilité opérationnelle et doit être investigué.
+                    </small>
+                  </>
+                ) : <p className="customer-history-pagination">Chargement de la réconciliation…</p>}
               </section>
               <section className="admin-card">
                 <h2>Limites et répartition de revenus</h2>

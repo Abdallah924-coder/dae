@@ -16,6 +16,7 @@
    - `MONGODB_URI` : URI de la base MongoDB de production.
    - `ADMIN_EMAIL` et `ADMIN_PASSWORD` : première identité d’administration.
    - `ADMIN_SECOND_EMAIL` et `ADMIN_SECOND_PASSWORD` : deuxième identité indépendante, avec e-mail et mot de passe distincts; requis pour les propositions et approbations DAE Earn.
+   - `DAE_EARN_TREASURY_ADDRESS` : adresse publique du wallet Earn DAE sur BNB Smart Chain, géré par l’entreprise. Ne renseignez ici aucune clé privée ni phrase de récupération.
    - `ADMIN_SESSION_SECRET` : chaîne aléatoire d’au moins 32 caractères.
    - `BREVO_API_KEY` : clé API de Brevo.
    - `BREVO_SENDER_EMAIL` : adresse d’expédition vérifiée dans Brevo.
@@ -42,6 +43,18 @@ Infobip reste facultatif et sert uniquement aux notifications de suivi des comma
 Les réponses HTTP 429 indiquent que la limite de requêtes publiques CoinGecko est atteinte. Créez une clé API Demo dans le tableau de bord CoinGecko, puis ajoutez-la dans Render comme variable secrète `COINGECKO_API_KEY` (ne la mettez ni dans le code ni dans le frontend). Enregistrez avec **Save, rebuild, and deploy**. Le serveur l’utilisera pour ses requêtes de prix et d’historique; le cache limite aussi les requêtes répétées. Après redéploiement, rechargez la page et vérifiez que le graphique affiche ses observations horaires. La clé augmente les quotas mais ne garantit pas une disponibilité continue de CoinGecko.
 
 Les commandes et leurs événements d’audit exigent une base MongoDB compatible avec les transactions multi-documents. Planifiez `npm run expire` à intervalles réguliers depuis un ordonnanceur pour passer les demandes échues en statut expiré.
+
+### DAE Earn (opérations manuelles avec preuves)
+
+Les souscriptions restent fermées par défaut. Les paramètres d’ouverture se proposent dans Administration → DAE Earn puis nécessitent l’approbation du second administrateur. Après activation, le client utilise le bouton « Souscrire et verrouiller » : le ledger déplace atomiquement ses USDT disponibles vers le compartiment staké. Le placement reste en attente jusqu’à ce que DAE ait effectué l’allocation depuis son wallet d’entreprise.
+
+DAE exécute les dépôts et retraits Venus/Aave hors de la plateforme. L’administration n’accepte ensuite que des reçus BSC confirmés correspondant à l’adresse de trésorerie et aux contrats configurés; un autre administrateur doit approuver avant toute activation, écriture de revenu ou libération du capital client. Les clés de la trésorerie ne sont jamais demandées ni stockées par le site.
+
+Le compte `DAE_EARN_TREASURY_ADDRESS` doit commencer par être rapproché avec « Proposer le solde initial ». Les apports ultérieurs sont enregistrés avec leur hash de transaction. La page affiche le solde BEP-20 comparé au compte de cash Earn du ledger; tout écart doit être investigué avant une nouvelle allocation. Les revenus ne sont reconnus qu’après récupération confirmée vers la trésorerie. Le système impute d’abord les retraits au principal restant de chaque allocation; seul le surplus constaté est considéré comme rendement, puis réparti selon les pourcentages configurés (70 % récompenses, 20 % DAE, 10 % réserve par défaut).
+
+Les récompenses quotidiennes sont calculées selon l’APY du produit divisé par 365, puis plafonnées au solde du pool réellement financé. Le job est déclenché par le serveur toutes les 15 minutes pour traiter la journée UTC terminée, rattraper les dates manquantes et redistribuer les demandes non financées; chaque journée et chaque crédit sont idempotents. Le job ne verse rien si `rewardsEnabled` est désactivé ou si le pool est vide. Un retrait demandé ne crédite pas immédiatement le solde : il attend la récupération et le rapprochement du principal, puis l’approbation croisée. La pénalité sur les récompenses déjà créditées est figée à la souscription; toute pénalité exige le solde disponible du client et ne peut pas réduire son capital.
+
+Ces boutons et vérifications ne remplacent pas une validation juridique, une revue sécurité indépendante, un test de reprise, une vérification des contrats et de la liquidité par DAE, ni une réconciliation complète de tous les actifs DeFi. N’activez pas les produits pour des clients réels avant ces validations et un essai d’exploitation contrôlé.
 
 ## URLs du site
 

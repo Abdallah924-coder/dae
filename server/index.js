@@ -237,6 +237,13 @@ connectDB()
       drainEmailOutbox().catch((error) => logger.error({ err: error }, 'Traitement de la file e-mail indisponible'));
     }, 5000);
     emailOutboxTimer.unref();
+    const earnRewardsTimer = setInterval(() => {
+      require('./jobs/distributeEarnRewards').runEarnRewardJob()
+        .catch((error) => logger.error({ err: error }, 'Traitement des récompenses DAE Earn indisponible'));
+    }, 15 * 60 * 1000);
+    earnRewardsTimer.unref();
+    require('./jobs/distributeEarnRewards').runEarnRewardJob()
+      .catch((error) => logger.error({ err: error }, 'Traitement initial des récompenses DAE Earn indisponible'));
     drainEmailOutbox().catch((error) => logger.error({ err: error }, 'Traitement initial de la file e-mail indisponible'));
     app.listen(PORT, () => {
       logger.info({ port: PORT, env: config.node }, `Serveur sur http://localhost:${PORT}`);

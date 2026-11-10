@@ -8356,8 +8356,64 @@ td {
 .customer-earn-product button {
   width: 100%;
   margin-top: auto;
-  cursor: not-allowed;
-  opacity: 0.68;
+  cursor: pointer;
+}
+
+.earn-customer-positions,
+.earn-operation-toggles {
+  display: grid;
+  gap: 12px;
+}
+
+.earn-customer-positions article {
+  display: grid;
+  gap: 8px;
+  padding: 14px 0;
+  border-bottom: 1px solid #2a2a2a;
+}
+
+.earn-customer-positions article small {
+  color: #aaa;
+}
+
+.earn-customer-positions .button {
+  width: fit-content;
+}
+
+.earn-operation-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 18px 0;
+}
+
+.earn-accounting-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  margin: 18px 0;
+}
+
+.earn-accounting-grid article {
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  border: 1px solid #2a2a2a;
+  border-radius: 10px;
+  background: #0b0b0b;
+}
+
+.earn-accounting-grid small {
+  color: #aaa;
+}
+
+.earn-reconciled {
+  border-color: #235a3b;
+  color: #b7f0c8;
+}
+
+.earn-reconciled i {
+  background: #42cc74;
 }
 
 .customer-earn-empty {
