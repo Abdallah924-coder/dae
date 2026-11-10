@@ -4493,10 +4493,18 @@ function Admin() {
     if (decision === 'reject') {
       reason = String(window.prompt('Motif du refus (minimum 8 caractères) :') || '').trim();
       if (reason.length < 8) return;
-    } else if (!window.confirm(
-      `Approuver la configuration proposée par ${proposal.proposerEmail} ? Les paramètres indicatifs seront enregistrés. Les souscriptions, allocations et récompenses restent désactivées.`,
-    )) {
-      return;
+    } else {
+      const enabledFeatures = [
+        proposal.config.subscriptionsEnabled && 'les souscriptions',
+        proposal.config.allocationsEnabled && 'les allocations DeFi',
+        proposal.config.rewardsEnabled && 'les récompenses',
+      ].filter(Boolean);
+      const activationSummary = enabledFeatures.length
+        ? `À l’approbation, seront activés : ${enabledFeatures.join(', ')}.`
+        : 'Aucun flux financier ne sera activé.';
+      if (!window.confirm(
+        `Approuver la configuration proposée par ${proposal.proposerEmail} ? ${activationSummary}`,
+      )) return;
     }
     setEarnDecisionBusy(String(proposal._id));
     try {
@@ -5420,7 +5428,13 @@ function Admin() {
                       aucune clé privée. Les APY sont indicatifs et aucune récompense n’est garantie.
                     </p>
                   </div>
-                  <span className="readiness-lock">PRODUCTION · DÉSACTIVÉE</span>
+                  <span className="readiness-lock">
+                    {earnConfig.productionEnabled
+                      ? 'PRODUCTION · ACTIVÉE'
+                      : earnConfig.subscriptionsEnabled || earnConfig.allocationsEnabled || earnConfig.rewardsEnabled
+                        ? 'ACTIVATION PARTIELLE'
+                        : 'PRODUCTION · DÉSACTIVÉE'}
+                  </span>
                 </div>
                 <div className="customer-earn-status" role="status">
                   <i />

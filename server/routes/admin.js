@@ -870,11 +870,14 @@ router.get('/readiness', async (_req, res, next) => {
         enabled: withdrawalsReady,
         status: !bsc.withdrawalsEnabled ? 'withdrawals_disabled' : !bscWithdrawalsConfigReady(bsc) ? 'bsc_configuration_incomplete' : !transactionsReady ? 'mongo_transactions_required' : signerOnline ? 'signer_online' : 'self_hosted_signer_offline',
       },
-      staking: { enabled: false, status: 'earn_not_live' },
+      staking: {
+        enabled: earn.productionEnabled,
+        status: earn.productionEnabled ? 'earn_live' : 'earn_not_live',
+      },
     },
     earn: {
       catalogEnabled: true,
-      productionEnabled: false,
+      productionEnabled: earn.productionEnabled,
       subscriptionsEnabled: earn.subscriptionsEnabled,
       allocationsEnabled: earn.allocationsEnabled,
       rewardsEnabled: earn.rewardsEnabled,

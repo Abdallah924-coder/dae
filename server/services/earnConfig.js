@@ -22,7 +22,9 @@ function configForClient(config) {
       ...product,
       minimumAmount: formatUnits(product.minimumAmountAtomic, 18),
     })),
-    productionEnabled: false,
+    productionEnabled: Boolean(
+      source.subscriptionsEnabled && source.allocationsEnabled && source.rewardsEnabled,
+    ),
   };
 }
 

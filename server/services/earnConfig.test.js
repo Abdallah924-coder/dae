@@ -24,6 +24,21 @@ test('default catalog uses the four requested indicative products and keeps all 
   assert.equal(config.rewardsEnabled, false);
 });
 
+test('reports production active only when subscriptions, allocations and rewards are all enabled', () => {
+  const defaults = defaultEarnConfig();
+  assert.equal(configForClient({
+    ...defaults,
+    subscriptionsEnabled: true,
+    allocationsEnabled: true,
+  }).productionEnabled, false);
+  assert.equal(configForClient({
+    ...defaults,
+    subscriptionsEnabled: true,
+    allocationsEnabled: true,
+    rewardsEnabled: true,
+  }).productionEnabled, true);
+});
+
 test('validates revenue split, global and per-protocol allocation limits', () => {
   const defaults = defaultEarnConfig();
   assert.deepEqual(validateEarnConfig(defaults).revenueSplitBps, {
