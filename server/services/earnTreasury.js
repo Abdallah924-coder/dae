@@ -22,6 +22,21 @@ function configuredEarnTreasuryAddress() {
   return value ? getAddress(value) : null;
 }
 
+async function assertUsdtContract(provider, expectedAddress) {
+  const tokenAddress = getAddress(config.bsc.usdtContract);
+  if (tokenAddress !== getAddress(expectedAddress)) {
+    const error = new Error('Le contrat USDT configuré ne correspond pas au marché Earn vérifié.');
+    error.code = 'ERR_EARN_UNDERLYING_MISMATCH';
+    throw error;
+  }
+  if (await provider.getCode(tokenAddress) === '0x') {
+    const error = new Error('Le contrat USDT Earn est absent de la chaîne configurée.');
+    error.code = 'ERR_EARN_TOKEN_INVALID';
+    throw error;
+  }
+  return tokenAddress;
+}
+
 function topicAddress(topic) {
   if (!/^0x[0-9a-f]{64}$/i.test(topic || '')) return null;
   return getAddress(`0x${topic.slice(-40)}`);
@@ -56,11 +71,7 @@ async function verifyProtocolRedemptionReceipt({ provider, txHash, protocol }) {
   }
   const protocolConfig = EARN_PROTOCOLS[protocol];
   if (!protocolConfig) throw new TypeError('Protocole DAE Earn invalide.');
-  if (getAddress(config.bsc.usdtContract) !== getAddress(protocolConfig.underlying)) {
-    const error = new Error('Le contrat USDT configuré ne correspond pas au marché Earn vérifié.');
-    error.code = 'ERR_EARN_UNDERLYING_MISMATCH';
-    throw error;
-  }
+  const tokenAddress = await assertUsdtContract(provider, protocolConfig.underlying);
   if (!/^0x[0-9a-f]{64}$/i.test(String(txHash || ''))) {
     throw new TypeError('Hash de transaction BSC invalide.');
   }
@@ -102,7 +113,6 @@ async function verifyProtocolRedemptionReceipt({ provider, txHash, protocol }) {
     error.code = 'ERR_EARN_RECEIPT_CALL_MISMATCH';
     throw error;
   }
-  const tokenAddress = getAddress(config.bsc.usdtContract);
   const protocolSource = getAddress(protocol === 'venus' ? protocolConfig.market : protocolConfig.aToken);
   let amountAtomic = 0n;
   for (const log of receipt.logs) {
@@ -147,6 +157,11 @@ async function confirmedReceipt(provider, txHash) {
     error.code = 'ERR_EARN_RECEIPT_NOT_FOUND';
     throw error;
   }
+  if (String(receipt.hash).toLowerCase() !== String(txHash).toLowerCase()) {
+    const error = new Error('Le RPC a retourné un reçu différent du hash demandé.');
+    error.code = 'ERR_EARN_RECEIPT_HASH_MISMATCH';
+    throw error;
+  }
   if (receipt.status !== 1) {
     const error = new Error('La transaction BSC a échoué.');
     error.code = 'ERR_EARN_RECEIPT_FAILED';
@@ -183,11 +198,7 @@ async function verifyProtocolAllocationReceipt({ provider, txHash, protocol, exp
   }
   const protocolConfig = EARN_PROTOCOLS[protocol];
   if (!protocolConfig) throw new TypeError('Protocole DAE Earn invalide.');
-  if (getAddress(config.bsc.usdtContract) !== getAddress(protocolConfig.underlying)) {
-    const error = new Error('Le contrat USDT configuré ne correspond pas au marché Earn vérifié.');
-    error.code = 'ERR_EARN_UNDERLYING_MISMATCH';
-    throw error;
-  }
+  const tokenAddress = await assertUsdtContract(provider, protocolConfig.underlying);
   const { transaction, receipt } = await confirmedReceipt(provider, txHash);
   if (getAddress(transaction.from) !== treasuryAddress) {
     const error = new Error('La transaction d’allocation doit provenir de la trésorerie DAE Earn.');
@@ -227,7 +238,7 @@ async function verifyProtocolAllocationReceipt({ provider, txHash, protocol, exp
   }
   const recipient = protocol === 'venus' ? protocolConfig.market : protocolConfig.aToken;
   const received = sumTransfers(receipt, {
-    tokenAddress: protocolConfig.underlying,
+    tokenAddress,
     from: treasuryAddress,
     to: recipient,
   });
@@ -253,9 +264,10 @@ async function verifyTreasuryFundingReceipt({ provider, txHash }) {
     error.code = 'ERR_EARN_TREASURY_NOT_CONFIGURED';
     throw error;
   }
+  const tokenAddress = await assertUsdtContract(provider, EARN_PROTOCOLS.venus.underlying);
   const { receipt } = await confirmedReceipt(provider, txHash);
   const amount = sumTransfers(receipt, {
-    tokenAddress: config.bsc.usdtContract,
+    tokenAddress,
     to: treasuryAddress,
     excludeFrom: treasuryAddress,
   });
@@ -286,12 +298,7 @@ async function getTreasuryUsdtSnapshot(provider) {
     error.code = 'ERR_EARN_WRONG_CHAIN';
     throw error;
   }
-  const tokenAddress = getAddress(config.bsc.usdtContract);
-  if (tokenAddress !== getAddress(EARN_PROTOCOLS.venus.underlying)) {
-    const error = new Error('Le contrat USDT configuré ne correspond pas au marché Earn vérifié.');
-    error.code = 'ERR_EARN_UNDERLYING_MISMATCH';
-    throw error;
-  }
+  const tokenAddress = await assertUsdtContract(provider, EARN_PROTOCOLS.venus.underlying);
   const token = new Contract(
     tokenAddress,
     ['function balanceOf(address) view returns (uint256)'],

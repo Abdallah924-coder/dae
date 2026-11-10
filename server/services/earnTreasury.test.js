@@ -39,6 +39,7 @@ function providerFor({ protocol = 'aaveV3', txTo, txData, txFrom = treasuryAddre
   const receiptBlock = 100;
   return {
     async getNetwork() { return { chainId: 56n }; },
+    async getCode() { return '0x6000'; },
     async getTransaction() { return { to, from: txFrom, data }; },
     async getTransactionReceipt() {
       return {
@@ -91,6 +92,21 @@ test('rejects failed, unconfirmed, wrong-source and wrong-destination receipts',
     txHash: `0x${'a'.repeat(64)}`,
     protocol: 'aaveV3',
   }), { code: 'ERR_EARN_RECEIPT_NO_USDT' });
+});
+
+test('rejects a receipt returned for a different transaction hash', async () => {
+  const provider = providerFor();
+  provider.getTransactionReceipt = async () => ({
+    hash: `0x${'d'.repeat(64)}`,
+    status: 1,
+    blockNumber: 100,
+    logs: [],
+  });
+  await assert.rejects(verifyProtocolRedemptionReceipt({
+    provider,
+    txHash: `0x${'a'.repeat(64)}`,
+    protocol: 'aaveV3',
+  }), { code: 'ERR_EARN_RECEIPT_HASH_MISMATCH' });
 });
 
 test('verifies Aave allocation call, treasury origin, exact amount and aToken transfer', async () => {

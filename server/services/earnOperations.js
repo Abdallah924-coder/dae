@@ -125,6 +125,7 @@ async function createEarnPosition({ customer, productId, amountAtomic, idempoten
         productId: product.productId,
         asset: 'USDT',
         network: 'BEP20',
+        decimals: 18,
         amountAtomic: amount,
         idempotencyKey,
         requestHash,
