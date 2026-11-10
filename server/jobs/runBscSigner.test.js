@@ -3,7 +3,11 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const { Interface } = require('ethers');
-const { canRequeueUnfundedGasTopUp, matchesTokenTransfer } = require('./runBscSigner');
+const {
+  canRequeueUnfundedGasTopUp,
+  isTransientRpcError,
+  matchesTokenTransfer,
+} = require('./runBscSigner');
 
 const job = { signedPurpose: 'gas_topup' };
 const parsed = {
@@ -60,4 +64,12 @@ test('matches signed BEP-20 transfers using the ABI amount argument', () => {
   assert.equal(matchesTokenTransfer(decoded, destination, '2500000000000000000'), true);
   assert.equal(matchesTokenTransfer(decoded, destination, '2500000000000000001'), false);
   assert.equal(matchesTokenTransfer(decoded, '0x0000000000000000000000000000000000000002', '2500000000000000000'), false);
+});
+
+test('identifies direct and nested transient RPC timeouts', () => {
+  assert.equal(isTransientRpcError(Object.assign(new Error('request timeout'), { code: 'TIMEOUT' })), true);
+  assert.equal(isTransientRpcError(new AggregateError([
+    Object.assign(new Error('connect timed out'), { code: 'ETIMEDOUT' }),
+  ])), true);
+  assert.equal(isTransientRpcError(Object.assign(new Error('contract reverted'), { code: 'CALL_EXCEPTION' })), false);
 });

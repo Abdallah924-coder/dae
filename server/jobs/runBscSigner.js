@@ -24,11 +24,33 @@ const TOKEN_ABI = [
   'function transfer(address to, uint256 amount) returns (bool)',
 ];
 const DECIMALS = 18;
+const TRANSIENT_RPC_ERROR_CODES = new Set([
+  'TIMEOUT',
+  'ETIMEDOUT',
+  'ECONNABORTED',
+  'ECONNRESET',
+  'ECONNREFUSED',
+  'EHOSTUNREACH',
+  'EAI_AGAIN',
+  'NETWORK_ERROR',
+]);
 
 function matchesTokenTransfer(decoded, destination, amountAtomic) {
   return decoded?.name === 'transfer'
     && String(decoded.args.to).toLowerCase() === destination.toLowerCase()
     && decoded.args.amount.toString() === amountAtomic;
+}
+
+function isTransientRpcError(error, seen = new Set()) {
+  if (!error || typeof error !== 'object' || seen.has(error)) return false;
+  seen.add(error);
+  if (TRANSIENT_RPC_ERROR_CODES.has(error.code)) return true;
+  if (
+    isTransientRpcError(error.cause, seen) ||
+    isTransientRpcError(error.info?.error, seen)
+  ) return true;
+  return Array.isArray(error.errors)
+    && error.errors.some((nestedError) => isTransientRpcError(nestedError, seen));
 }
 
 function localSigner() {
@@ -401,6 +423,17 @@ async function main() {
       try { await processJob(job, signers, provider, token); }
       catch (error) {
         logger.error({ jobId: String(job._id), err: error }, 'Transfert BSC échoué');
+        if (isTransientRpcError(error)) {
+          const requeued = await BscTransferJob.updateOne(
+            { _id: job._id, status: 'processing' },
+            { $set: { status: 'queued', errorCode: null } },
+          );
+          if (requeued.modifiedCount === 1) {
+            logger.warn({ jobId: String(job._id), code: error.code }, 'Erreur RPC temporaire; job remis en file sans échouer le retrait');
+            await new Promise((resolve) => setTimeout(resolve, config.bsc.scanIntervalMs));
+            continue;
+          }
+        }
         const errorMessage = error.message || error.code || 'SIGNER_ERROR';
         const failing = await BscTransferJob.updateOne({ _id: job._id, status: 'processing' }, {
           $set: { status: 'failing', errorCode: String(errorMessage).slice(0, 80) },
@@ -424,4 +457,10 @@ if (require.main === module) {
   });
 }
 
-module.exports = { canRequeueUnfundedGasTopUp, localSigner, matchesTokenTransfer, processJob };
+module.exports = {
+  canRequeueUnfundedGasTopUp,
+  isTransientRpcError,
+  localSigner,
+  matchesTokenTransfer,
+  processJob,
+};
