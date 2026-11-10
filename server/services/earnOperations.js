@@ -20,6 +20,7 @@ const {
   verifyProtocolRedemptionReceipt,
   getTreasuryUsdtSnapshot,
   verifyTreasuryFundingReceipt,
+  verifyTreasuryPayoutReceipt,
 } = require('./earnTreasury');
 
 const TERMS_VERSION = 'DAE_EARN_V1';
@@ -308,7 +309,17 @@ async function proposeEarnAction({ type, actor, reason, positionId, allocationId
     if (!position) throw Object.assign(new Error('Demande de retrait introuvable.'), { code: 'ERR_EARN_WITHDRAWAL_NOT_PENDING' });
     const activeAllocation = await EarnAllocation.exists({ positionId, status: { $ne: 'closed' } });
     if (activeAllocation) throw Object.assign(new Error('Récupérez d’abord le principal du protocole et rapprochez-le avec une preuve confirmée.'), { code: 'ERR_EARN_ALLOCATION_STILL_ACTIVE' });
-    verified = { ...verified, grossAmountAtomic: position.amountAtomic, principalAmountAtomic: position.amountAtomic };
+    const receipt = await verifyTreasuryPayoutReceipt({
+      provider: getProvider(),
+      txHash,
+      expectedAmountAtomic: position.amountAtomic,
+    });
+    verified = {
+      ...verified,
+      ...receipt,
+      grossAmountAtomic: receipt.amountAtomic,
+      principalAmountAtomic: receipt.amountAtomic,
+    };
   } else {
     throw new TypeError('Action DAE Earn invalide.');
   }
@@ -523,17 +534,41 @@ async function applyApprovedEarnAction(action, actor, session) {
     const activeAllocation = await EarnAllocation.exists({ positionId: position._id, status: { $ne: 'closed' } }).session(session);
     if (activeAllocation) throw new Error('Le principal doit être récupéré et rapproché avant le retrait client.');
     const principal = BigInt(position.amountAtomic);
+    const receipt = await verifyTreasuryPayoutReceipt({
+      provider: getProvider(),
+      txHash: action.txHash,
+      expectedAmountAtomic: position.amountAtomic,
+    });
+    if (receipt.amountAtomic !== action.grossAmountAtomic || receipt.amountAtomic !== action.principalAmountAtomic) {
+      throw new Error('Le transfert de remboursement diffère de la preuve proposée.');
+    }
     const treasuryCash = -BigInt(await getLedgerBalanceAtomic({
       accountRef: 'system:earn:treasury-cash',
       asset: 'USDT',
       network: 'BEP20',
     }, { session }));
     if (treasuryCash < principal) {
-      throw Object.assign(new Error('La trésorerie disponible ne couvre pas le capital demandé; le retrait reste en attente.'), {
+      throw Object.assign(new Error('Le cash comptable Earn ne couvre pas le transfert vers le wallet opérationnel; le retrait reste en attente.'), {
         code: 'ERR_EARN_WITHDRAWAL_LIQUIDITY',
       });
     }
-    await assertTreasuryCash(treasuryCash.toString(), session);
+    await assertTreasuryCash((treasuryCash - principal).toString(), session);
+    const assetTransfer = await postLedgerTransaction({
+      type: 'earn_revenue',
+      idempotencyKey: `earn-payout-transfer:${action.txHash}`,
+      sourceRef: action.txHash,
+      createdBy: actor,
+      metadata: {
+        actionId: String(action._id),
+        kind: 'customer_withdrawal_transfer_to_operational_wallet',
+        customerId: String(position.customerId),
+        positionId: String(position._id),
+      },
+      postings: [
+        { accountRef: 'system:earn:treasury-cash', asset: 'USDT', network: 'BEP20', decimals: 18, side: 'credit', amountAtomic: principal.toString() },
+        { accountRef: 'system:exchange-reserve', asset: 'USDT', network: 'BEP20', decimals: 18, side: 'debit', amountAtomic: principal.toString() },
+      ],
+    }, { session });
     const penalty = BigInt(position.withdrawalPenaltyAtomic || '0');
     const postings = [
       { accountRef: customerLedgerAccountRef(position.customerId, 'staked'), asset: 'USDT', network: 'BEP20', decimals: 18, side: 'debit', amountAtomic: principal.toString() },
@@ -558,7 +593,13 @@ async function applyApprovedEarnAction(action, actor, session) {
       idempotencyKey: `earn-withdrawal:${position._id}`,
       sourceRef: String(position._id),
       createdBy: actor,
-      metadata: { actionId: String(action._id), customerId: String(position.customerId), penaltyAtomic: penalty.toString() },
+      metadata: {
+        actionId: String(action._id),
+        customerId: String(position.customerId),
+        penaltyAtomic: penalty.toString(),
+        treasuryTransferLedgerReference: assetTransfer.transaction.reference,
+        treasuryTransferTxHash: action.txHash,
+      },
       postings,
     }, { session });
     position.status = 'COMPLETED';

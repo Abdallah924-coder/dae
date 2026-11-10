@@ -265,6 +265,7 @@ router.get('/earn/accounting', async (_req, res, next) => {
       safetyReserve: ['system:earn:safety-reserve', false],
       capitalContribution: ['system:earn:capital-contribution', false],
       penalties: ['system:earn:penalties', false],
+      exchangeReserve: ['system:exchange-reserve', true],
     };
     const ledgerBalances = {};
     for (const [name, [accountRef, debitNormal]] of Object.entries(accounts)) {
@@ -295,6 +296,7 @@ router.get('/earn/accounting', async (_req, res, next) => {
       network: 'BEP20',
       decimals: 18,
       treasuryAddress,
+      operationalWalletAddress: config.bsc.masterAddress || null,
       ledgerBalances,
       onchainTreasuryBalanceAtomic,
       reconciliation: {

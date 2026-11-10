@@ -4511,6 +4511,9 @@ function Admin() {
     } else if (type === 'fund_treasury') {
       body.txHash = String(window.prompt('Hash BSC du dépôt USDT externe vers la trésorerie Earn DAE :') || '').trim();
       if (!body.txHash) return;
+    } else if (type === 'settle_withdrawal') {
+      body.txHash = String(window.prompt('Hash BSC du transfert du principal, depuis la trésorerie Earn vers BSC_MASTER_ADDRESS :') || '').trim();
+      if (!body.txHash) return;
     }
     body.reason = String(window.prompt('Motif de l’opération financière (minimum 8 caractères) :') || '').trim();
     if (body.reason.length < 8) return;
@@ -5658,7 +5661,7 @@ function Admin() {
                             disabled={earnActionBusy === 'settle_withdrawal' || !earnSecondAdminConfigured}
                             onClick={() => proposeEarnFinancialAction('settle_withdrawal', { positionId: String(position._id) })}
                           >
-                            Proposer le déverrouillage ledger
+                            Vérifier le transfert au wallet opérationnel et déverrouiller
                           </button>
                         )}
                         {position.status === 'WITHDRAWAL_PENDING' && allocation?.status === 'active' && (
@@ -5703,6 +5706,9 @@ function Admin() {
                       Réconciliation trésorerie : {earnAccounting.reconciliation.status}
                       {earnAccounting.treasuryAddress && ` · ${earnAccounting.treasuryAddress}`}
                     </div>
+                    <small className="card-description">
+                      Wallet opérationnel : {earnAccounting.operationalWalletAddress || 'non configuré'}
+                    </small>
                     <div className="earn-accounting-grid">
                       {[
                         ['treasuryCash', 'Trésorerie USDT'],
@@ -5713,6 +5719,7 @@ function Admin() {
                         ['safetyReserve', 'Réserve sécurité (10 %)'],
                         ['capitalContribution', 'Apports trésorerie'],
                         ['penalties', 'Pénalités acceptées'],
+                        ['exchangeReserve', 'Réserve opérationnelle ledger'],
                       ].map(([key, label]) => (
                         <article key={key}>
                           <small>{label}</small>

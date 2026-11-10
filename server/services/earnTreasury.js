@@ -16,6 +16,19 @@ const VENUS_DEPOSIT_INTERFACE = new Interface(['function mint(uint256 mintAmount
 const AAVE_DEPOSIT_INTERFACE = new Interface([
   'function supply(address asset,uint256 amount,address onBehalfOf,uint16 referralCode)',
 ]);
+const ERC20_TRANSFER_INTERFACE = new Interface([
+  'function transfer(address to,uint256 amount) returns (bool)',
+]);
+const VENUS_MARKET_EVENTS = new Interface([
+  'event Mint(address minter,uint256 mintAmount,uint256 mintTokens,uint256 totalSupply)',
+  'event Redeem(address redeemer,uint256 redeemAmount,uint256 redeemTokens,uint256 totalSupply)',
+  'event Mint(address minter,uint256 mintAmount,uint256 mintTokens)',
+  'event Redeem(address redeemer,uint256 redeemAmount,uint256 redeemTokens)',
+]);
+const AAVE_POOL_EVENTS = new Interface([
+  'event Supply(address indexed reserve,address user,address indexed onBehalfOf,uint256 amount,uint16 referralCode)',
+  'event Withdraw(address indexed reserve,address indexed user,address indexed to,uint256 amount)',
+]);
 
 function configuredEarnTreasuryAddress() {
   const value = String(process.env.DAE_EARN_TREASURY_ADDRESS || '').trim();
@@ -31,6 +44,12 @@ async function assertUsdtContract(provider, expectedAddress) {
   }
   if (await provider.getCode(tokenAddress) === '0x') {
     const error = new Error('Le contrat USDT Earn est absent de la chaîne configurée.');
+    error.code = 'ERR_EARN_TOKEN_INVALID';
+    throw error;
+  }
+  const token = new Contract(tokenAddress, ['function decimals() view returns (uint8)'], provider);
+  if (Number(await token.decimals()) !== 18) {
+    const error = new Error('La précision du contrat USDT Earn est inattendue.');
     error.code = 'ERR_EARN_TOKEN_INVALID';
     throw error;
   }
@@ -127,6 +146,26 @@ async function verifyProtocolRedemptionReceipt({ provider, txHash, protocol }) {
     error.code = 'ERR_EARN_RECEIPT_NO_USDT';
     throw error;
   }
+  const redeemed = protocol === 'venus'
+    ? sumProtocolEvents(receipt, {
+      contractAddress: protocolConfig.market,
+      eventInterface: VENUS_MARKET_EVENTS,
+      eventName: 'Redeem',
+      subject: treasuryAddress,
+    })
+    : sumProtocolEvents(receipt, {
+      contractAddress: protocolConfig.pool,
+      eventInterface: AAVE_POOL_EVENTS,
+      eventName: 'Withdraw',
+      asset: tokenAddress,
+      subject: treasuryAddress,
+      beneficiary: treasuryAddress,
+    });
+  if (redeemed !== amountAtomic) {
+    const error = new Error('Le reçu ne contient pas l’événement de retrait USDT attendu du protocole.');
+    error.code = 'ERR_EARN_REDEMPTION_EVENT_MISMATCH';
+    throw error;
+  }
   return {
     txHash: receipt.hash,
     protocol,
@@ -189,6 +228,26 @@ function sumTransfers(receipt, { tokenAddress, from, to, excludeFrom }) {
   return amountAtomic;
 }
 
+function sumProtocolEvents(receipt, { contractAddress, eventInterface, eventName, subject, asset, beneficiary }) {
+  let amountAtomic = 0n;
+  for (const log of receipt.logs) {
+    if (getAddress(log.address) !== getAddress(contractAddress)) continue;
+    let parsed;
+    try {
+      parsed = eventInterface.parseLog(log);
+    } catch {
+      continue;
+    }
+    if (parsed?.name !== eventName) continue;
+    const args = parsed.args;
+    if (subject && getAddress(args.minter || args.redeemer || args.user) !== getAddress(subject)) continue;
+    if (asset && getAddress(args.reserve) !== getAddress(asset)) continue;
+    if (beneficiary && getAddress(args.onBehalfOf || args.to) !== getAddress(beneficiary)) continue;
+    amountAtomic += BigInt(args.mintAmount ?? args.redeemAmount ?? args.amount);
+  }
+  return amountAtomic;
+}
+
 async function verifyProtocolAllocationReceipt({ provider, txHash, protocol, expectedAmountAtomic }) {
   const treasuryAddress = configuredEarnTreasuryAddress();
   if (!treasuryAddress) {
@@ -247,6 +306,26 @@ async function verifyProtocolAllocationReceipt({ provider, txHash, protocol, exp
     error.code = 'ERR_EARN_ALLOCATION_TRANSFER_MISMATCH';
     throw error;
   }
+  const supplied = protocol === 'venus'
+    ? sumProtocolEvents(receipt, {
+      contractAddress: protocolConfig.market,
+      eventInterface: VENUS_MARKET_EVENTS,
+      eventName: 'Mint',
+      subject: treasuryAddress,
+    })
+    : sumProtocolEvents(receipt, {
+      contractAddress: protocolConfig.pool,
+      eventInterface: AAVE_POOL_EVENTS,
+      eventName: 'Supply',
+      subject: treasuryAddress,
+      asset: tokenAddress,
+      beneficiary: treasuryAddress,
+    });
+  if (supplied !== amount) {
+    const error = new Error('Le reçu ne contient pas l’événement de dépôt USDT attendu du protocole.');
+    error.code = 'ERR_EARN_ALLOCATION_EVENT_MISMATCH';
+    throw error;
+  }
   return {
     txHash: receipt.hash,
     protocol,
@@ -282,6 +361,68 @@ async function verifyTreasuryFundingReceipt({ provider, txHash }) {
     blockNumber: receipt.blockNumber,
     treasuryAddress,
     amountAtomic: amount.toString(),
+  };
+}
+
+async function verifyTreasuryPayoutReceipt({ provider, txHash, expectedAmountAtomic }) {
+  const treasuryAddress = configuredEarnTreasuryAddress();
+  if (!treasuryAddress) {
+    const error = new Error('DAE_EARN_TREASURY_ADDRESS doit être configurée.');
+    error.code = 'ERR_EARN_TREASURY_NOT_CONFIGURED';
+    throw error;
+  }
+  if (!config.bsc.masterAddress || !/^0x[0-9a-f]{40}$/i.test(config.bsc.masterAddress)) {
+    const error = new Error('BSC_MASTER_ADDRESS doit être configurée pour restituer les fonds au wallet opérationnel.');
+    error.code = 'ERR_EARN_SETTLEMENT_ADDRESS_NOT_CONFIGURED';
+    throw error;
+  }
+  const settlementAddress = getAddress(config.bsc.masterAddress);
+  if (settlementAddress === treasuryAddress) {
+    const error = new Error('La trésorerie DeFi et le wallet opérationnel doivent être distincts.');
+    error.code = 'ERR_EARN_TREASURY_ADDRESSES_NOT_SEPARATE';
+    throw error;
+  }
+  const tokenAddress = await assertUsdtContract(provider, EARN_PROTOCOLS.venus.underlying);
+  const { transaction, receipt } = await confirmedReceipt(provider, txHash);
+  if (getAddress(transaction.from) !== treasuryAddress || getAddress(transaction.to || '') !== tokenAddress) {
+    const error = new Error('Le remboursement doit être un transfert USDT de la trésorerie DeFi au wallet opérationnel.');
+    error.code = 'ERR_EARN_PAYOUT_CALL_MISMATCH';
+    throw error;
+  }
+  let call;
+  try {
+    call = ERC20_TRANSFER_INTERFACE.parseTransaction({ data: transaction.data });
+  } catch {
+    call = null;
+  }
+  const amountAtomic = String(expectedAmountAtomic || '');
+  if (
+    call?.name !== 'transfer' ||
+    getAddress(call.args.to) !== settlementAddress ||
+    BigInt(call.args.amount).toString() !== amountAtomic ||
+    BigInt(transaction.value || 0) !== 0n
+  ) {
+    const error = new Error('Le transfert USDT ne correspond pas au principal attendu et au wallet opérationnel.');
+    error.code = 'ERR_EARN_PAYOUT_AMOUNT_MISMATCH';
+    throw error;
+  }
+  const received = sumTransfers(receipt, {
+    tokenAddress,
+    from: treasuryAddress,
+    to: settlementAddress,
+  });
+  if (received !== BigInt(amountAtomic)) {
+    const error = new Error('Le reçu ne prouve pas le transfert intégral du principal au wallet opérationnel.');
+    error.code = 'ERR_EARN_PAYOUT_TRANSFER_MISMATCH';
+    throw error;
+  }
+  return {
+    txHash: receipt.hash,
+    chainId: 56,
+    blockNumber: receipt.blockNumber,
+    treasuryAddress,
+    settlementAddress,
+    amountAtomic: received.toString(),
   };
 }
 
@@ -329,4 +470,5 @@ module.exports = {
   verifyProtocolAllocationReceipt,
   verifyProtocolRedemptionReceipt,
   verifyTreasuryFundingReceipt,
+  verifyTreasuryPayoutReceipt,
 };
