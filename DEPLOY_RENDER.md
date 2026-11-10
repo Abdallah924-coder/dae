@@ -14,7 +14,8 @@
 2. Render détectera `render.yaml` et préparera le service web `dae-crypto`.
 3. Lors de la configuration, renseignez les variables marquées comme secrètes :
    - `MONGODB_URI` : URI de la base MongoDB de production.
-   - `ADMIN_EMAIL` et `ADMIN_PASSWORD` : identifiants de connexion à l’administration.
+   - `ADMIN_EMAIL` et `ADMIN_PASSWORD` : première identité d’administration.
+   - `ADMIN_SECOND_EMAIL` et `ADMIN_SECOND_PASSWORD` : deuxième identité indépendante, avec e-mail et mot de passe distincts; requis pour les propositions et approbations DAE Earn.
    - `ADMIN_SESSION_SECRET` : chaîne aléatoire d’au moins 32 caractères.
    - `BREVO_API_KEY` : clé API de Brevo.
    - `BREVO_SENDER_EMAIL` : adresse d’expédition vérifiée dans Brevo.
@@ -22,7 +23,7 @@
 5. Vérifiez l’URL Render et `/healthz`. La réponse doit être HTTP 200 avec `{"status":"ok"}`; une base non connectée retourne HTTP 503.
 6. Testez une connexion admin, une commande et l’envoi du formulaire de contact.
 
-`PUBLIC_APP_URL` doit valoir `https://dae-1lpj.onrender.com` (sans barre oblique finale). `ADMIN_EMAIL` reçoit les messages du formulaire de contact et une notification à chaque nouvelle demande d’achat ou de vente.
+`PUBLIC_APP_URL` doit valoir `https://dae-1lpj.onrender.com` (sans barre oblique finale). `ADMIN_EMAIL` reçoit les messages du formulaire de contact et une notification à chaque nouvelle demande d’achat ou de vente. L’administration accepte les deux identités configurées. Pour DAE Earn, un changement proposé par une identité doit être approuvé par l’autre; des variables absentes, identiques ou mal configurées bloquent cette opération. Ne partagez pas les mots de passe entre administrateurs.
 
 ### Configurer les e-mails d’authentification
 

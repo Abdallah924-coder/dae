@@ -25,38 +25,57 @@ function safeEqual(input, expected) {
   );
 }
 
+function configuredAdmins() {
+  const admins = [
+    { email: process.env.ADMIN_EMAIL?.trim().toLowerCase(), password: process.env.ADMIN_PASSWORD },
+    { email: process.env.ADMIN_SECOND_EMAIL?.trim().toLowerCase(), password: process.env.ADMIN_SECOND_PASSWORD },
+  ].filter((admin) => admin.email && admin.password);
+  return admins.filter((admin, index) => (
+    admin.email.length <= 254 &&
+    admin.password.length <= 1024 &&
+    admins.findIndex((candidate) => candidate.email === admin.email) === index
+  ));
+}
+
+function secondAdminConfigured() {
+  const admins = configuredAdmins();
+  return admins.length === 2 &&
+    admins[0].email !== admins[1].email &&
+    admins[0].password !== admins[1].password;
+}
+
 function createSession(email) {
   return sign({ email, exp: Math.floor(Date.now() / 1000) + SESSION_LIFETIME_SECONDS });
 }
 
-function isValidSession(token) {
+function sessionEmail(token) {
   try {
     const parts = String(token || '').split('.');
-    if (parts.length !== 2) return false;
+    if (parts.length !== 2) return null;
     const [encodedPayload, signature] = parts;
-    if (!encodedPayload || !signature) return false;
+    if (!encodedPayload || !signature) return null;
     const expected = crypto
       .createHmac('sha256', process.env.ADMIN_SESSION_SECRET)
       .update(encodedPayload)
       .digest();
     const given = Buffer.from(signature, 'base64url');
-    if (given.length !== expected.length || !crypto.timingSafeEqual(given, expected)) return false;
+    if (given.length !== expected.length || !crypto.timingSafeEqual(given, expected)) return null;
     const payload = JSON.parse(Buffer.from(encodedPayload, 'base64url').toString());
+    const admin = configuredAdmins().find((candidate) => candidate.email === payload.email);
     return (
-      payload.email === process.env.ADMIN_EMAIL?.trim().toLowerCase() &&
+      admin &&
       Number.isInteger(payload.exp) &&
       payload.exp > Math.floor(Date.now() / 1000)
-    );
+    ) ? admin.email : null;
   } catch {
-    return false;
+    return null;
   }
 }
 
 function login(req, res, next) {
-  const configuredEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
-  const configuredPassword = process.env.ADMIN_PASSWORD;
+  const admins = configuredAdmins();
   const sessionSecret = process.env.ADMIN_SESSION_SECRET;
-  if (!configuredEmail || !configuredPassword || !sessionSecret || sessionSecret.length < 32) {
+  if (!admins.length || !sessionSecret || sessionSecret.length < 32) {
     return res
       .status(503)
       .json({ error: 'Les identifiants admin ne sont pas configurés correctement sur le serveur' });
@@ -69,12 +88,13 @@ function login(req, res, next) {
   if (email.length > 254 || password.length > 1024) {
     return res.status(401).json({ error: 'Adresse e-mail ou mot de passe incorrect' });
   }
-  if (!safeEqual(email, configuredEmail) || !safeEqual(password, configuredPassword)) {
+  const admin = admins.find((candidate) => safeEqual(email, candidate.email) && safeEqual(password, candidate.password));
+  if (!admin) {
     logger.warn('Tentative de connexion admin échouée');
     return res.status(401).json({ error: 'Adresse e-mail ou mot de passe incorrect' });
   }
   try {
-    res.json({ token: createSession(email), expiresIn: SESSION_LIFETIME_SECONDS });
+    res.json({ token: createSession(admin.email), email: admin.email, expiresIn: SESSION_LIFETIME_SECONDS });
   } catch (err) {
     next(err);
   }
@@ -83,10 +103,15 @@ function login(req, res, next) {
 module.exports = (req, res, next) => {
   const authorization = req.get('authorization') || '';
   const token = authorization.startsWith('Bearer ') ? authorization.slice(7) : '';
-  if (!isValidSession(token))
+  const email = sessionEmail(token);
+  if (!email)
     return res.status(401).json({ error: 'Session expirée ou non autorisée' });
+  req.adminEmail = email;
   next();
 };
 
 module.exports.login = login;
 module.exports.createSession = createSession;
+module.exports.configuredAdmins = configuredAdmins;
+module.exports.secondAdminConfigured = secondAdminConfigured;
+module.exports.sessionEmail = sessionEmail;

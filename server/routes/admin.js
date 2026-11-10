@@ -11,6 +11,9 @@ const CustomerSession = require('../models/CustomerSession');
 const CustomerAuditEvent = require('../models/CustomerAuditEvent');
 const CustomerKycAuditEvent = require('../models/CustomerKycAuditEvent');
 const SiteConfig = require('../models/SiteConfig');
+const EarnConfig = require('../models/EarnConfig');
+const EarnConfigChange = require('../models/EarnConfigChange');
+const EarnConfigAuditLog = require('../models/EarnConfigAuditLog');
 const assets = require('../config/cryptoAssets');
 const { orderStatusChanged } = require('../services/email');
 const { logger } = require('../lib/logger');
@@ -25,6 +28,9 @@ const BscSignerHeartbeat = require('../models/BscSignerHeartbeat');
 const BscIndexerHeartbeat = require('../models/BscIndexerHeartbeat');
 const { Contract, formatEther, formatUnits, getAddress } = require('ethers');
 const { getProvider } = require('../services/bsc');
+const { configForClient, getEarnConfig, validateEarnConfig } = require('../services/earnConfig');
+const { getEarnProtocolStatus } = require('../services/earnProtocols');
+const { canResolveEarnChange } = require('../services/earnChangeApproval');
 
 const router = express.Router();
 router.post('/auth/login', adminAuth.login);
@@ -111,6 +117,297 @@ router.get('/dashboard', async (_req, res, next) => {
     res.json(summary);
   } catch (err) {
     next(err);
+  }
+});
+
+router.get('/earn/config', async (_req, res, next) => {
+  try {
+    const config = await getEarnConfig();
+    return res.json({
+      ...configForClient(config),
+      secondAdminConfigured: adminAuth.secondAdminConfigured(),
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/earn/audit', async (_req, res, next) => {
+  try {
+    const events = await EarnConfigAuditLog.find()
+      .select('actor action configVersion reason changeId createdAt')
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(50)
+      .lean();
+    return res.json({ events });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/earn/proposals', async (_req, res, next) => {
+  try {
+    const proposals = await EarnConfigChange.find()
+      .select('proposerEmail approverEmail status expectedVersion reason config expiresAt resolvedAt resolutionReason createdAt')
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(50)
+      .lean();
+    return res.json({
+      proposals: proposals.map((proposal) => ({
+        ...proposal,
+        status: proposal.status === 'pending' && proposal.expiresAt <= new Date()
+          ? 'expired'
+          : proposal.status,
+        config: configForClient(proposal.config),
+      })),
+      currentAdmin: _req.adminEmail,
+      secondAdminConfigured: adminAuth.secondAdminConfigured(),
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/earn/protocols', async (_req, res, next) => {
+  try {
+    try {
+      return res.json(await getEarnProtocolStatus());
+    } catch (error) {
+      logger.warn({ errorCode: error.code || error.name || 'EARN_RPC_UNAVAILABLE' }, 'Statut RPC des protocoles Earn indisponible');
+      return res.json({
+        source: 'bsc_rpc_read_only',
+        status: 'unavailable',
+        errorCode: error.code || error.name || 'EARN_RPC_UNAVAILABLE',
+        allocationEnabled: false,
+        protocols: {
+          venus: { protocol: 'venus', status: 'unavailable', allocationEnabled: false, withdrawalEnabled: false },
+          aaveV3: { protocol: 'aaveV3', status: 'unavailable', allocationEnabled: false, withdrawalEnabled: false },
+        },
+      });
+    }
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post('/earn/proposals', async (req, res, next) => {
+  const reason = String(req.body?.reason || '').trim();
+  const expectedVersion = req.body?.expectedVersion;
+  if (!Number.isInteger(expectedVersion) || expectedVersion < 0) {
+    return res.status(400).json({ error: 'Version de configuration requise.' });
+  }
+  if (reason.length < 8 || reason.length > 300) {
+    return res.status(400).json({ error: 'Le motif doit contenir entre 8 et 300 caractères.' });
+  }
+  let nextConfig;
+  try {
+    nextConfig = validateEarnConfig(req.body?.config);
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+  if (!mongoTransactionsReady()) {
+    return res.status(503).json({
+      error: 'MongoDB en replica set est requis pour enregistrer atomiquement la demande et son audit.',
+    });
+  }
+  if (!adminAuth.secondAdminConfigured()) {
+    return res.status(503).json({ error: 'Configurez deux administrateurs indépendants avant de proposer un changement DAE Earn.' });
+  }
+  const actor = req.adminEmail;
+  let session;
+  try {
+    session = await mongoose.startSession();
+    let proposal;
+    await session.withTransaction(async () => {
+      const current = await EarnConfig.findOne({ key: 'main' }).session(session);
+      const currentVersion = current?.configVersion || 0;
+      if (currentVersion !== expectedVersion) {
+        const conflict = new Error('La configuration a changé. Rechargez-la avant de réessayer.');
+        conflict.code = 'ERR_EARN_CONFIG_CONFLICT';
+        throw conflict;
+      }
+      [proposal] = await EarnConfigChange.create([{
+        proposerEmail: actor,
+        expectedVersion,
+        reason,
+        config: nextConfig,
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      }], { session });
+      await EarnConfigAuditLog.create([{
+        actor,
+        action: 'configuration_proposed',
+        configVersion: currentVersion + 1,
+        reason,
+        changeId: proposal._id,
+        previousConfig: configForClient(current?.toObject() || null),
+        nextConfig: configForClient(nextConfig),
+      }], { session });
+    });
+    return res.status(202).json({
+      proposal: {
+        id: String(proposal._id),
+        status: proposal.status,
+        proposerEmail: proposal.proposerEmail,
+        expectedVersion: proposal.expectedVersion,
+        expiresAt: proposal.expiresAt,
+      },
+    });
+  } catch (error) {
+    if (error.code === 'ERR_EARN_CONFIG_CONFLICT') {
+      return res.status(409).json({ error: error.message });
+    }
+    return next(error);
+  } finally {
+    if (session) await session.endSession();
+  }
+});
+
+router.post('/earn/proposals/:id/approve', async (req, res, next) => {
+  if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ error: 'Identifiant de demande invalide.' });
+  if (!adminAuth.secondAdminConfigured()) {
+    return res.status(503).json({ error: 'Configurez deux administrateurs indépendants avant toute approbation.' });
+  }
+  if (!mongoTransactionsReady()) {
+    return res.status(503).json({ error: 'MongoDB en replica set est requis pour approuver atomiquement DAE Earn.' });
+  }
+  const actor = req.adminEmail;
+  let session;
+  let result;
+  try {
+    session = await mongoose.startSession();
+    await session.withTransaction(async () => {
+      const proposal = await EarnConfigChange.findOne({
+        _id: req.params.id,
+        status: 'pending',
+      }).session(session);
+      if (!proposal) {
+        result = { status: 404, error: 'Demande introuvable ou déjà traitée.' };
+        return;
+      }
+      if (proposal.proposerEmail === actor) {
+        result = { status: 403, error: 'Un administrateur ne peut pas approuver sa propre demande.' };
+        return;
+      }
+      if (proposal.expiresAt <= new Date()) {
+        proposal.status = 'expired';
+        proposal.resolvedAt = new Date();
+        await proposal.save({ session });
+        await EarnConfigAuditLog.create([{
+          actor,
+          action: 'configuration_rejected',
+          configVersion: proposal.expectedVersion + 1,
+          reason: 'Demande expirée avant approbation.',
+          changeId: proposal._id,
+        }], { session });
+        result = { status: 410, error: 'La demande a expiré; soumettez une nouvelle configuration.' };
+        return;
+      }
+      if (!canResolveEarnChange(proposal, actor)) {
+        result = { status: 403, error: 'Cette demande ne peut pas être approuvée par cette identité.' };
+        return;
+      }
+      const current = await EarnConfig.findOne({ key: 'main' }).session(session);
+      const currentVersion = current?.configVersion || 0;
+      if (currentVersion !== proposal.expectedVersion) {
+        proposal.status = 'rejected';
+        proposal.approverEmail = actor;
+        proposal.resolvedAt = new Date();
+        proposal.resolutionReason = 'La configuration a changé depuis la proposition.';
+        await proposal.save({ session });
+        await EarnConfigAuditLog.create([{
+          actor,
+          action: 'configuration_rejected',
+          configVersion: currentVersion,
+          reason: proposal.resolutionReason,
+          changeId: proposal._id,
+        }], { session });
+        result = { status: 409, error: proposal.resolutionReason };
+        return;
+      }
+      const config = validateEarnConfig(proposal.config);
+      const previousConfig = configForClient(current?.toObject() || null);
+      let updatedConfig;
+      if (current) {
+        current.set({ ...config, configVersion: currentVersion + 1, updatedBy: actor });
+        updatedConfig = await current.save({ session });
+      } else {
+        [updatedConfig] = await EarnConfig.create([{
+          key: 'main',
+          ...config,
+          configVersion: 1,
+          updatedBy: actor,
+        }], { session });
+      }
+      proposal.status = 'approved';
+      proposal.approverEmail = actor;
+      proposal.resolvedAt = new Date();
+      await proposal.save({ session });
+      await EarnConfigAuditLog.create([{
+        actor,
+        action: 'configuration_approved',
+        configVersion: updatedConfig.configVersion,
+        reason: proposal.reason,
+        changeId: proposal._id,
+        previousConfig,
+        nextConfig: configForClient(updatedConfig.toObject()),
+      }], { session });
+      result = { status: 200, config: configForClient(updatedConfig.toObject()) };
+    });
+    if (result?.error) return res.status(result.status).json({ error: result.error });
+    return res.json({ config: result.config });
+  } catch (error) {
+    return next(error);
+  } finally {
+    if (session) await session.endSession();
+  }
+});
+
+router.post('/earn/proposals/:id/reject', async (req, res, next) => {
+  if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ error: 'Identifiant de demande invalide.' });
+  if (!adminAuth.secondAdminConfigured()) {
+    return res.status(503).json({ error: 'Configurez deux administrateurs indépendants avant toute décision.' });
+  }
+  const reason = String(req.body?.reason || '').trim();
+  if (reason.length < 8 || reason.length > 300) {
+    return res.status(400).json({ error: 'Le motif de refus doit contenir entre 8 et 300 caractères.' });
+  }
+  if (!mongoTransactionsReady()) {
+    return res.status(503).json({ error: 'MongoDB en replica set est requis pour auditer la décision.' });
+  }
+  const actor = req.adminEmail;
+  let session;
+  try {
+    session = await mongoose.startSession();
+    let result;
+    await session.withTransaction(async () => {
+      const proposal = await EarnConfigChange.findOne({
+        _id: req.params.id,
+        status: 'pending',
+        expiresAt: { $gt: new Date() },
+        proposerEmail: { $ne: actor },
+      }).session(session);
+      if (!canResolveEarnChange(proposal, actor)) return;
+      proposal.status = 'rejected';
+      proposal.approverEmail = actor;
+      proposal.resolvedAt = new Date();
+      proposal.resolutionReason = reason;
+      await proposal.save({ session });
+      const current = await EarnConfig.findOne({ key: 'main' }).select('configVersion').session(session).lean();
+      result = proposal;
+      await EarnConfigAuditLog.create([{
+        actor,
+        action: 'configuration_rejected',
+        configVersion: current?.configVersion || 0,
+        reason,
+        changeId: proposal._id,
+      }], { session });
+    });
+    if (!result) return res.status(404).json({ error: 'Demande introuvable, expirée ou vous en êtes le proposant.' });
+    return res.json({ id: String(result._id), status: result.status, approverEmail: result.approverEmail });
+  } catch (error) {
+    return next(error);
+  } finally {
+    if (session) await session.endSession();
   }
 });
 
@@ -317,7 +614,11 @@ router.get('/customers/:id/audit', async (req, res, next) => {
 
 router.get('/readiness', async (_req, res, next) => {
   try {
-  const siteConfig = await SiteConfig.findOne({ key: 'main' }).lean();
+  const [siteConfig, earnConfig] = await Promise.all([
+    SiteConfig.findOne({ key: 'main' }).lean(),
+    getEarnConfig(),
+  ]);
+  const earn = configForClient(earnConfig);
   const paymentRails = {
     mtn: Boolean(siteConfig?.paymentNumbers?.mtn?.trim()),
     airtel: Boolean(siteConfig?.paymentNumbers?.airtel?.trim()),
@@ -369,7 +670,17 @@ router.get('/readiness', async (_req, res, next) => {
         enabled: withdrawalsReady,
         status: !bsc.withdrawalsEnabled ? 'withdrawals_disabled' : !bscWithdrawalsConfigReady(bsc) ? 'bsc_configuration_incomplete' : !transactionsReady ? 'mongo_transactions_required' : signerOnline ? 'signer_online' : 'self_hosted_signer_offline',
       },
-      staking: { enabled: false, status: 'product_not_configured' },
+      staking: { enabled: false, status: 'earn_not_live' },
+    },
+    earn: {
+      catalogEnabled: true,
+      productionEnabled: false,
+      subscriptionsEnabled: false,
+      allocationsEnabled: false,
+      rewardsEnabled: false,
+      configVersion: earn.configVersion,
+      allocationLimitBps: earn.allocationLimitBps,
+      dualApprovalConfigured: adminAuth.secondAdminConfigured(),
     },
     bsc: { configured: bsc.ready, ...bsc, signerOnline, indexerOnline, indexedThrough: indexerHeartbeat?.indexedThrough || null, token: 'Binance-Peg BSC-USD', decimals: 18, chainId: 56 },
     regulatoryReview: process.env.DAE_REGULATORY_REVIEWED === 'true',

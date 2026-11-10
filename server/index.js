@@ -194,6 +194,7 @@ const adminLoginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10 });
 app.use('/api/rates', require('./routes/rates'));
 app.use('/api/markets', marketLimiter, require('./routes/markets'));
 app.use('/api/config', require('./routes/config'));
+app.use('/api/earn', require('./routes/earn'));
 app.use('/api/account', (_req, res, next) => {
   res.set('Cache-Control', 'no-store');
   next();

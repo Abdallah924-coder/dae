@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
+import { parseUnits } from 'ethers';
 
 const assetsFallback = [
   {
@@ -2510,6 +2511,71 @@ function CustomerFundingHistory({ type }) {
   );
 }
 
+function CustomerEarnPage() {
+  const [catalog, setCatalog] = useState(null);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    let active = true;
+    api('/api/earn/catalog')
+      .then((result) => {
+        if (active) setCatalog(result);
+      })
+      .catch((requestError) => {
+        if (active) setError(requestError.message || 'Le catalogue DAE Earn est indisponible.');
+      });
+    return () => { active = false; };
+  }, []);
+
+  return (
+    <>
+      <section className="customer-earn-intro">
+        <span className="eyebrow plain">DAE EARN · RENDEMENTS DEFI</span>
+        <h2>Faites travailler vos USDT, en toute transparence.</h2>
+        <p>
+          Les taux affichés sont des objectifs indicatifs, pas une promesse de rendement. Les
+          souscriptions, allocations et distributions sont désactivées tant que les revenus nets,
+          les réserves et les contrôles ne sont pas validés.
+        </p>
+        <div className="customer-earn-status" role="status">
+          <i /> {catalog?.message || 'Les produits DAE Earn ne sont pas encore ouverts.'}
+        </div>
+      </section>
+      {error && <Notice>{error}</Notice>}
+      {!catalog && !error && <p className="customer-history-pagination">Chargement du catalogue…</p>}
+      {catalog && (
+        <section className="customer-earn-products" aria-label="Produits DAE Earn">
+          {catalog.products.map((product) => (
+            <article className="customer-earn-product" key={product.productId}>
+              <span className="eyebrow plain">{product.flexible ? 'FLEXIBLE' : `${product.durationDays} JOURS`}</span>
+              <h3>{product.name}</h3>
+              <strong className="customer-earn-apy">{(product.apyBps / 100).toFixed(2)}<small>%</small></strong>
+              <small>APY indicatif · non garanti</small>
+              <dl>
+                <div><dt>Dépôt minimum</dt><dd>{formatDecimalString(product.minimumAmount)} USDT</dd></div>
+                <div><dt>Durée</dt><dd>{product.flexible ? 'Sans engagement fixe' : `${product.durationDays} jours`}</dd></div>
+                <div><dt>Retrait</dt><dd>{product.flexible ? 'Selon les liquidités disponibles' : 'Capital bloqué à échéance'}</dd></div>
+                <div><dt>Récompenses</dt><dd>Calculées quotidiennement si financées</dd></div>
+              </dl>
+              <button className="button button-outline" disabled title="Les souscriptions ne sont pas ouvertes.">
+                Souscriptions bientôt disponibles
+              </button>
+            </article>
+          ))}
+        </section>
+      )}
+      <section className="customer-module-card customer-earn-empty">
+        <span className="eyebrow plain">MES PLACEMENTS</span>
+        <h3>Aucun nouveau placement DAE Earn</h3>
+        <p>
+          Aucun placement ni récompense ne sera simulé. Les positions historiques éventuelles
+          restent consultables ci-dessous.
+        </p>
+      </section>
+      <CustomerFundingHistory type="staking" />
+    </>
+  );
+}
+
 function CustomerAvatar({ customer, large = false }) {
   const identity = String(customer.id || customer.email || customer.firstName || 'customer');
   const seed = Array.from(identity).reduce(
@@ -3772,23 +3838,7 @@ function CustomerPortal() {
             <CustomerFundingHistory key={withdrawalRefresh} type="withdrawal" />
             </>
           )}
-          {path === '/staking' && (
-            <>
-            <section className="customer-module-card">
-              <div className="module-lock-icon">◇</div>
-              <span className="eyebrow plain">STAKING</span>
-              <h2>Aucun produit de staking n’est ouvert.</h2>
-              <p>
-                Les offres de rendement ne seront publiées qu’après validation du protocole, des
-                actifs, des périodes de blocage, des frais, des récompenses et des risques.
-              </p>
-              <div className="module-state">
-                <i /> Aucune offre disponible pour le moment
-              </div>
-            </section>
-            <CustomerFundingHistory type="staking" />
-            </>
-          )}
+          {path === '/staking' && <CustomerEarnPage />}
           {path === '/verification' && (
             <section className="customer-module-card">
               <div className="module-lock-icon">✓</div>
@@ -3930,6 +3980,14 @@ function Admin() {
   const ordersRequestId = useRef(0);
   const [rates, setRates] = useState([]);
   const [settings, setSettings] = useState(null);
+  const [earnConfig, setEarnConfig] = useState(null);
+  const [earnAudit, setEarnAudit] = useState([]);
+  const [earnProposals, setEarnProposals] = useState([]);
+  const [earnCurrentAdmin, setEarnCurrentAdmin] = useState('');
+  const [earnSecondAdminConfigured, setEarnSecondAdminConfigured] = useState(false);
+  const [earnProtocolStatus, setEarnProtocolStatus] = useState(null);
+  const [earnReason, setEarnReason] = useState('');
+  const [earnDecisionBusy, setEarnDecisionBusy] = useState('');
   const [readiness, setReadiness] = useState(null);
   const [bscCustodyBalances, setBscCustodyBalances] = useState(null);
   const [bscSweepBusy, setBscSweepBusy] = useState(false);
@@ -3972,18 +4030,28 @@ function Admin() {
   const load = useCallback(async () => {
     if (!token) return;
     try {
-      const [d, r, s, readinessState, custodyBalances] = await Promise.all([
+      const [d, r, s, readinessState, custodyBalances, earn, earnHistory, earnProtocols, earnChangeQueue] = await Promise.all([
         api('/api/admin/dashboard', { admin: true }),
         api('/api/admin/rates', { admin: true }),
         api('/api/admin/settings', { admin: true }),
         api('/api/admin/readiness', { admin: true }),
         api('/api/admin/custody/bsc/balances', { admin: true }).catch(() => null),
+        api('/api/admin/earn/config', { admin: true }),
+        api('/api/admin/earn/audit', { admin: true }),
+        api('/api/admin/earn/protocols', { admin: true }),
+        api('/api/admin/earn/proposals', { admin: true }),
       ]);
       setDashboard(d);
       setRates(r);
       setSettings(s);
       setReadiness(readinessState);
       setBscCustodyBalances(custodyBalances);
+      setEarnConfig(earn);
+      setEarnAudit(earnHistory.events || []);
+      setEarnProtocolStatus(earnProtocols);
+      setEarnProposals(earnChangeQueue.proposals || []);
+      setEarnCurrentAdmin(earnChangeQueue.currentAdmin || '');
+      setEarnSecondAdminConfigured(Boolean(earnChangeQueue.secondAdminConfigured));
       if (r[0])
         setRateForm({
           buyRate: r[0].buyRate,
@@ -4208,6 +4276,66 @@ function Admin() {
       notify(e.message, true);
     }
   }
+  async function saveEarnConfig(e) {
+    e.preventDefault();
+    try {
+      if (!earnConfig) return;
+      const config = {
+        allocationLimitBps: earnConfig.allocationLimitBps,
+        protocolLimitsBps: earnConfig.protocolLimitsBps,
+        revenueSplitBps: earnConfig.revenueSplitBps,
+        earlyWithdrawal: earnConfig.earlyWithdrawal,
+        products: earnConfig.products.map((product) => ({
+          productId: product.productId,
+          name: product.name,
+          apyBps: product.apyBps,
+          durationDays: product.durationDays,
+          minimumAmountAtomic: parseUnits(String(product.minimumAmount), 18).toString(),
+          flexible: product.flexible,
+          published: product.published,
+        })),
+      };
+      const proposal = await api('/api/admin/earn/proposals', {
+        method: 'POST',
+        admin: true,
+        body: JSON.stringify({
+          expectedVersion: earnConfig.configVersion,
+          reason: earnReason,
+          config,
+        }),
+      });
+      setEarnReason('');
+      notify(`Proposition ${proposal.proposal.id} créée. L’autre administrateur doit l’examiner et l’approuver.`);
+      await load();
+    } catch (saveError) {
+      notify(saveError.message, true);
+    }
+  }
+  async function decideEarnProposal(proposal, decision) {
+    let reason = '';
+    if (decision === 'reject') {
+      reason = String(window.prompt('Motif du refus (minimum 8 caractères) :') || '').trim();
+      if (reason.length < 8) return;
+    } else if (!window.confirm(
+      `Approuver la configuration proposée par ${proposal.proposerEmail} ? Les paramètres indicatifs seront enregistrés. Les souscriptions, allocations et récompenses restent désactivées.`,
+    )) {
+      return;
+    }
+    setEarnDecisionBusy(String(proposal._id));
+    try {
+      await api(`/api/admin/earn/proposals/${encodeURIComponent(proposal._id)}/${decision}`, {
+        method: 'POST',
+        admin: true,
+        body: JSON.stringify({ reason }),
+      });
+      notify(decision === 'approve' ? 'Configuration approuvée par un second administrateur.' : 'Proposition refusée.');
+      await load();
+    } catch (decisionError) {
+      notify(decisionError.message, true);
+    } finally {
+      setEarnDecisionBusy('');
+    }
+  }
   async function saveSettings(e) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
@@ -4248,8 +4376,8 @@ function Admin() {
           <span className="eyebrow plain">ESPACE ÉQUIPE</span>
           <h1>Connexion à l’administration</h1>
           <p>
-            Réservé à l’adresse configurée pour l’administration. Saisissez cet e-mail et son mot
-            de passe pour accéder aux commandes, aux taux et aux paramètres.
+            Accès réservé aux adresses administrateur configurées par l’opérateur. Les changements
+            DAE Earn sensibles exigent une proposition d’un administrateur et l’approbation de l’autre.
           </p>
           <form onSubmit={login}>
             <label className="field-label">
@@ -4284,6 +4412,7 @@ function Admin() {
           ['orders', '⇄', 'Commandes'],
           ['customers', '♙', 'Comptes clients'],
           ['rates', '◷', 'Taux & limites'],
+          ['earn', '◇', 'DAE Earn'],
           ['settings', '⚙', 'Configuration'],
         ].map(([id, icon, label]) => (
           <button
@@ -4318,6 +4447,7 @@ function Admin() {
                 orders: 'Commandes',
                 customers: 'Comptes clients',
                 rates: 'Taux & limites',
+                earn: 'DAE Earn',
                 settings: 'Configuration',
               }[tab]
             }
@@ -4343,6 +4473,7 @@ function Admin() {
                     orders: 'Commandes',
                     customers: 'Comptes clients',
                     rates: 'Taux & limites',
+                    earn: 'DAE Earn',
                     settings: 'Configuration',
                   }[tab]
                 }
@@ -4522,9 +4653,11 @@ function Admin() {
                               : 'Activez la variable BSC_WITHDRAWALS_ENABLED et gardez le signataire local connecté ; MongoDB doit accepter les transactions.',
                           },
                           {
-                            label: 'Staking',
+                            label: 'DAE Earn · mouvements financiers',
                             enabled: readiness.custody.staking.enabled,
-                            detail: 'Aucun produit ou protocole approuvé.',
+                            detail: readiness.earn?.productionEnabled
+                              ? 'Contrôle d’activation déclaré; aucune allocation ou récompense n’est réalisée par cette page.'
+                              : 'Catalogue indicatif uniquement. Souscriptions, allocations et récompenses réelles sont désactivées.',
                           },
                           {
                             label: 'Revue réglementaire déclarée',
@@ -5014,6 +5147,356 @@ function Admin() {
                 </table>
               </div>
             </div>
+          )}
+          {tab === 'earn' && earnConfig && (
+            <form className="settings-stack" onSubmit={saveEarnConfig}>
+              <section className="admin-card">
+                <div className="card-heading">
+                  <div>
+                    <h2>DAE Earn · configuration indicative</h2>
+                    <p>
+                      Les réglages ci-dessous ne déclenchent aucun placement, transfert, allocation ou
+                      versement. Les APY restent des objectifs commerciaux, sans rendement garanti.
+                    </p>
+                  </div>
+                  <span className="readiness-lock">PRODUCTION · DÉSACTIVÉE</span>
+                </div>
+                <div className="customer-earn-status" role="status">
+                  <i />
+                  {earnSecondAdminConfigured
+                    ? `Connecté comme ${earnCurrentAdmin}. Une seconde identité admin valide et distincte est configurée.`
+                    : `Connecté comme ${earnCurrentAdmin}. Configurez ADMIN_SECOND_EMAIL et ADMIN_SECOND_PASSWORD avant toute proposition Earn.`}
+                  Les mouvements de fonds et récompenses restent désactivés.
+                </div>
+                <h3 className="subheading">Lecture BNB Smart Chain · sans transaction</h3>
+                <p className="card-description">
+                  Snapshot RPC au bloc {earnProtocolStatus?.blockNumber ?? '—'} ·{' '}
+                  {earnProtocolStatus?.observedAt
+                    ? new Date(earnProtocolStatus.observedAt).toLocaleString('fr-FR')
+                    : earnProtocolStatus?.errorCode || 'RPC non disponible'}.
+                  Les taux et liquidités on-chain peuvent changer; ils n’activent aucune allocation.
+                </p>
+                <div className="earn-protocol-status-grid">
+                  {[
+                    ['venus', 'Venus · vUSDT'],
+                    ['aaveV3', 'Aave V3 · USDT'],
+                  ].map(([protocol, label]) => {
+                    const snapshot = earnProtocolStatus?.protocols?.[protocol];
+                    return (
+                      <article key={protocol}>
+                        <strong>{label}</strong>
+                        <span className={snapshot?.status === 'unavailable' ? 'earn-protocol-offline' : 'earn-protocol-online'}>
+                          {snapshot?.status === 'unavailable'
+                            ? `Indisponible (${snapshot.errorCode || 'lecture impossible'})`
+                            : snapshot?.listed === false || snapshot?.active === false || snapshot?.paused || snapshot?.frozen
+                              ? 'Marché inactif, suspendu ou gelé'
+                              : 'Marché lu sur BSC · non validé pour allocation'}
+                        </span>
+                        {snapshot?.liquidity && <small>Liquidité observée : {formatDecimalString(snapshot.liquidity)} USDT</small>}
+                        {snapshot?.supplyRateAnnualPercent && <small>Taux annualisé source Aave : {snapshot.supplyRateAnnualPercent} % (taux variable du marché, non garanti)</small>}
+                        {snapshot?.supplyRatePerBlock && (
+                          <small>
+                            Taux source Venus par bloc : {snapshot.supplyRatePerBlock} · non annualisé
+                          </small>
+                        )}
+                        {snapshot?.supplyCap && <small>Cap d’offre configuré on-chain : {formatDecimalString(snapshot.supplyCap)} USDT</small>}
+                        <small>Allocation : désactivée · retrait automatique : désactivé</small>
+                      </article>
+                    );
+                  })}
+                </div>
+                <h3 className="subheading">Produits visibles dans le catalogue</h3>
+                <div className="earn-admin-products">
+                  {earnConfig.products.map((product) => (
+                    <fieldset className="earn-admin-product" key={product.productId}>
+                      <legend>{product.name}</legend>
+                      <div className="settings-grid">
+                        <label className="field-label">
+                          Nom
+                          <input
+                            required
+                            maxLength="60"
+                            value={product.name}
+                            onChange={(event) => setEarnConfig((current) => ({
+                              ...current,
+                              products: current.products.map((item) => item.productId === product.productId
+                                ? { ...item, name: event.target.value }
+                                : item),
+                            }))}
+                          />
+                        </label>
+                        <label className="field-label">
+                          APY indicatif (%)
+                          <input
+                            required
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="0.01"
+                            value={product.apyBps / 100}
+                            onChange={(event) => setEarnConfig((current) => ({
+                              ...current,
+                              products: current.products.map((item) => item.productId === product.productId
+                                ? { ...item, apyBps: Math.round(Number(event.target.value) * 100) }
+                                : item),
+                            }))}
+                          />
+                        </label>
+                        <label className="field-label">
+                          Durée (jours)
+                          <input
+                            required
+                            type="number"
+                            min={product.flexible ? '0' : '1'}
+                            max="3650"
+                            step="1"
+                            value={product.durationDays}
+                            readOnly={product.flexible}
+                            onChange={(event) => setEarnConfig((current) => ({
+                              ...current,
+                              products: current.products.map((item) => item.productId === product.productId
+                                ? { ...item, durationDays: Number(event.target.value) }
+                                : item),
+                            }))}
+                          />
+                        </label>
+                        <label className="field-label">
+                          Dépôt minimum · USDT
+                          <input
+                            required
+                            inputMode="decimal"
+                            pattern="(?:0|[1-9][0-9]*)(?:\\.[0-9]{1,18})?"
+                            value={product.minimumAmount}
+                            onChange={(event) => setEarnConfig((current) => ({
+                              ...current,
+                              products: current.products.map((item) => item.productId === product.productId
+                                ? { ...item, minimumAmount: event.target.value }
+                                : item),
+                            }))}
+                          />
+                        </label>
+                        <label className="field-label earn-publish-control">
+                          <input
+                            type="checkbox"
+                            checked={product.published}
+                            onChange={(event) => setEarnConfig((current) => ({
+                              ...current,
+                              products: current.products.map((item) => item.productId === product.productId
+                                ? { ...item, published: event.target.checked }
+                                : item),
+                            }))}
+                          />
+                          Afficher au catalogue (souscription toujours fermée)
+                        </label>
+                      </div>
+                    </fieldset>
+                  ))}
+                </div>
+              </section>
+              <section className="admin-card">
+                <h2>Limites et répartition de revenus</h2>
+                <p className="card-description">
+                  Les plafonds ne sont pas actifs tant que les intégrations et le financement ne sont pas validés.
+                </p>
+                <div className="settings-grid">
+                  <label className="field-label">
+                    Limite globale d’allocation (%)
+                    <input
+                      type="number"
+                      min="0"
+                      max="10"
+                      step="0.01"
+                      value={earnConfig.allocationLimitBps / 100}
+                      onChange={(event) => setEarnConfig((current) => ({
+                        ...current,
+                        allocationLimitBps: Math.round(Number(event.target.value) * 100),
+                      }))}
+                    />
+                  </label>
+                  {[
+                    ['venus', 'Limite Venus (%)'],
+                    ['aaveV3', 'Limite Aave V3 (%)'],
+                  ].map(([protocol, label]) => (
+                    <label className="field-label" key={protocol}>
+                      {label}
+                      <input
+                        type="number"
+                        min="0"
+                        max="10"
+                        step="0.01"
+                        value={earnConfig.protocolLimitsBps[protocol] / 100}
+                        onChange={(event) => setEarnConfig((current) => ({
+                          ...current,
+                          protocolLimitsBps: {
+                            ...current.protocolLimitsBps,
+                            [protocol]: Math.round(Number(event.target.value) * 100),
+                          },
+                        }))}
+                      />
+                    </label>
+                  ))}
+                  {[
+                    ['userRewards', 'Récompenses utilisateurs (%)'],
+                    ['platform', 'Revenus plateforme (%)'],
+                    ['safetyReserve', 'Réserve de sécurité (%)'],
+                  ].map(([share, label]) => (
+                    <label className="field-label" key={share}>
+                      {label}
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="1"
+                        value={earnConfig.revenueSplitBps[share] / 100}
+                        onChange={(event) => setEarnConfig((current) => ({
+                          ...current,
+                          revenueSplitBps: {
+                            ...current.revenueSplitBps,
+                            [share]: Math.round(Number(event.target.value) * 100),
+                          },
+                        }))}
+                      />
+                    </label>
+                  ))}
+                  <label className="field-label">
+                    Pénalité récompenses non acquises (%)
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="1"
+                      value={earnConfig.earlyWithdrawal.unaccruedRewardsPenaltyBps / 100}
+                      onChange={(event) => setEarnConfig((current) => ({
+                        ...current,
+                        earlyWithdrawal: {
+                          ...current.earlyWithdrawal,
+                          unaccruedRewardsPenaltyBps: Math.round(Number(event.target.value) * 100),
+                        },
+                      }))}
+                    />
+                  </label>
+                  <label className="field-label">
+                    Pénalité récompenses déjà créditées (%)
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="1"
+                      value={earnConfig.earlyWithdrawal.creditedRewardsPenaltyBps / 100}
+                      onChange={(event) => setEarnConfig((current) => ({
+                        ...current,
+                        earlyWithdrawal: {
+                          ...current.earlyWithdrawal,
+                          creditedRewardsPenaltyBps: Math.round(Number(event.target.value) * 100),
+                        },
+                      }))}
+                    />
+                    <small>Ne s’appliquera pas rétroactivement aux conditions acceptées auparavant.</small>
+                  </label>
+                </div>
+              </section>
+              <section className="admin-card">
+                <label className="field-label">
+                  Motif de modification (obligatoire)
+                  <textarea
+                    required
+                    minLength="8"
+                    maxLength="300"
+                    rows="3"
+                    value={earnReason}
+                    onChange={(event) => setEarnReason(event.target.value)}
+                    placeholder="Expliquez le changement de paramètres"
+                  />
+                </label>
+                <p className="customer-history-pagination">
+                  Version {earnConfig.configVersion} · toute modification est enregistrée dans le journal append-only.
+                </p>
+                <button className="button button-primary" disabled={!earnSecondAdminConfigured}>
+                  Proposer une configuration
+                </button>
+              </section>
+              <section className="admin-card">
+                <h2>Approbation croisée</h2>
+                {earnProposals.length ? (
+                  <div className="earn-admin-audit">
+                    {earnProposals.map((proposal) => (
+                      <article key={proposal._id}>
+                        <strong>
+                          Proposition {String(proposal._id).slice(-8)} · {proposal.status}
+                        </strong>
+                        <small>
+                          Par {proposal.proposerEmail} · version attendue {proposal.expectedVersion} ·{' '}
+                          expire le {new Date(proposal.expiresAt).toLocaleString('fr-FR')}
+                        </small>
+                        <p>Motif : {proposal.reason}</p>
+                        <div className="earn-proposal-config">
+                          <strong>Produits proposés (APY indicatifs)</strong>
+                          {proposal.config.products.map((product) => (
+                            <small key={product.productId}>
+                              {product.name} · {(product.apyBps / 100).toFixed(2)} % ·{' '}
+                              {product.flexible ? 'Flexible' : `${product.durationDays} jours`} · minimum{' '}
+                              {formatDecimalString(product.minimumAmount)} USDT ·{' '}
+                              {product.published ? 'visible' : 'masqué'}
+                            </small>
+                          ))}
+                          <small>
+                            Répartition revenus : utilisateurs {proposal.config.revenueSplitBps.userRewards / 100}% ·
+                            DAE {proposal.config.revenueSplitBps.platform / 100}% ·
+                            réserve {proposal.config.revenueSplitBps.safetyReserve / 100}%.
+                          </small>
+                          <small>
+                            Allocation max {proposal.config.allocationLimitBps / 100}% · Venus{' '}
+                            {proposal.config.protocolLimitsBps.venus / 100}% · Aave V3{' '}
+                            {proposal.config.protocolLimitsBps.aaveV3 / 100}%.
+                          </small>
+                          <small>
+                            Pénalités récompenses : non acquises{' '}
+                            {proposal.config.earlyWithdrawal.unaccruedRewardsPenaltyBps / 100}% · déjà créditées{' '}
+                            {proposal.config.earlyWithdrawal.creditedRewardsPenaltyBps / 100}%.
+                          </small>
+                        </div>
+                        {proposal.status === 'pending' &&
+                          proposal.proposerEmail !== earnCurrentAdmin &&
+                          earnSecondAdminConfigured && (
+                            <div className="earn-proposal-actions">
+                              <button
+                                type="button"
+                                className="button button-primary compact"
+                                disabled={earnDecisionBusy === proposal._id}
+                                onClick={() => decideEarnProposal(proposal, 'approve')}
+                              >
+                                Approuver
+                              </button>
+                              <button
+                                type="button"
+                                className="button button-outline compact"
+                                disabled={earnDecisionBusy === proposal._id}
+                                onClick={() => decideEarnProposal(proposal, 'reject')}
+                              >
+                                Refuser
+                              </button>
+                            </div>
+                          )}
+                      </article>
+                    ))}
+                  </div>
+                ) : <p className="customer-history-pagination">Aucune proposition.</p>}
+              </section>
+              <section className="admin-card">
+                <h2>Journal des modifications DAE Earn</h2>
+                {earnAudit.length ? (
+                  <div className="earn-admin-audit">
+                    {earnAudit.map((event) => (
+                      <article key={`${event._id}:${event.configVersion}`}>
+                        <strong>Version {event.configVersion} · {event.action}</strong>
+                        <small>{event.actor} · {new Date(event.createdAt).toLocaleString('fr-FR')}</small>
+                        <p>{event.reason}</p>
+                      </article>
+                    ))}
+                  </div>
+                ) : <p className="customer-history-pagination">Aucune modification enregistrée.</p>}
+              </section>
+            </form>
           )}
           {tab === 'settings' && settings && (
             <form className="settings-stack" onSubmit={saveSettings}>
