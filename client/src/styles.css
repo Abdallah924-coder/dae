@@ -2131,6 +2131,7 @@ td small {
     font-size: 8px;
   }
 }
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -7965,4 +7966,68 @@ td {
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* Raise secondary-text contrast across the dark interface. */
+:root {
+  --muted: #a7b4bd;
+}
+
+.admin-label,
+.customer-menu-label,
+.admin-title p,
+.admin-topbar > span,
+.admin-date,
+.customer-topbar > div:first-child,
+.customer-sidebar-bottom button,
+.sidebar-bottom button,
+.stat-card > span,
+.stat-card small,
+.card-heading p,
+.card-description,
+.admin-content th,
+.admin-content td small,
+.customer-dashboard-overview > article > span,
+.customer-dashboard-overview > article > small,
+.customer-dashboard-note,
+.customer-profile-note,
+.customer-module-card > p,
+.customer-module-card li,
+.customer-profile-details dt,
+.customer-profile-state > span,
+.customer-profile-links small,
+.customer-empty-wallets,
+.customer-wallet-row small,
+.wallet-pending,
+.customer-transaction-main > small,
+.customer-transaction-value > small,
+.customer-wallet-list-heading > span,
+.customer-ledger-disclaimer,
+.customer-history-pagination,
+.customer-ledger-balance-heading,
+.customer-session-list small,
+.customer-security-row small,
+.market-watchlist-sync,
+.market-table th,
+.market-asset strong small,
+.market-watch-toggle,
+.market-history-heading h3 small,
+.market-chart-axis,
+.market-chart-times,
+.market-history-footer {
+  color: #a7b4bd;
+}
+
+.admin-nav,
+.customer-nav {
+  color: #a7b4bd;
+}
+
+.field-label input::placeholder,
+.field-label textarea::placeholder,
+.filters input::placeholder,
+.admin-content input::placeholder,
+.admin-content textarea::placeholder {
+  color: #8998a2;
+  opacity: 1;
 }

@@ -129,7 +129,6 @@ function publicCustomer(customer) {
     email: customer.email,
     phone: customer.phone,
     emailVerified: Boolean(customer.emailVerifiedAt),
-    phoneVerified: Boolean(customer.phoneVerifiedAt),
     kycStatus: customer.kycStatus,
     status: customer.status,
     createdAt: customer.createdAt,

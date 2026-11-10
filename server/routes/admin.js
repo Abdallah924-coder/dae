@@ -147,7 +147,7 @@ router.get('/customers', async (req, res, next) => {
       await Promise.all([
         Customer.find(filter)
           .select(
-            'firstName lastName email phone status kycStatus emailVerifiedAt phoneVerifiedAt createdAt lastLoginAt',
+            'firstName lastName email phone status kycStatus emailVerifiedAt createdAt lastLoginAt',
           )
           .sort({ createdAt: -1 })
           .skip((page - 1) * pageSize)
@@ -188,7 +188,6 @@ router.patch('/customers/:id/status', async (req, res, next) => {
     _id: customerId,
     status: fromStatus,
     emailVerifiedAt: { $ne: null },
-    phoneVerifiedAt: { $ne: null },
   };
   let session;
   let updatedCustomer = null;
@@ -327,9 +326,6 @@ router.get('/readiness', async (_req, res, next) => {
   const emailReady = Boolean(
     process.env.BREVO_API_KEY?.trim() && process.env.BREVO_SENDER_EMAIL?.trim(),
   );
-  const smsReady = Boolean(
-    process.env.INFOBIP_API_KEY?.trim() && process.env.INFOBIP_SENDER?.trim(),
-  );
   const authSecretReady = (process.env.CUSTOMER_AUTH_SECRET || '').length >= 32;
   const legalReviewReady = process.env.CUSTOMER_LEGAL_REVIEWED === 'true';
   const accountRegistrationReady =
@@ -353,12 +349,10 @@ router.get('/readiness', async (_req, res, next) => {
       registration: accountRegistrationReady,
       recovery:
         emailReady &&
-        smsReady &&
         authSecretReady &&
         mongoTransactionsReady() &&
         customerAuthService.publicAppOriginReady(),
       email: emailReady,
-      sms: smsReady,
       sessionSecret: authSecretReady,
       publicAppOrigin: customerAuthService.publicAppOriginReady(),
       legalReview: legalReviewReady,

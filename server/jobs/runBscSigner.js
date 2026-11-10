@@ -196,7 +196,7 @@ async function finalizePreparedWithdrawal(job) {
   }
   const customer = await Customer.findOne({
     _id: withdrawal.customerId, status: 'active', kycStatus: 'approved',
-    emailVerifiedAt: { $ne: null }, phoneVerifiedAt: { $ne: null },
+    emailVerifiedAt: { $ne: null },
   }).select('_id').lean();
   if (!customer) {
     await BscTransferJob.updateOne({ _id: job._id, status: 'preparing' }, { $set: { status: 'failed', errorCode: 'CUSTOMER_NOT_ELIGIBLE' } });
@@ -266,7 +266,7 @@ async function processJob(job, signers, provider, token) {
   }
   if (job.kind === 'withdrawal') {
     const withdrawal = await Withdrawal.findById(job.withdrawalId).select('customerId').lean();
-    const customer = withdrawal && await Customer.findOne({ _id: withdrawal.customerId, status: 'active', kycStatus: 'approved', emailVerifiedAt: { $ne: null }, phoneVerifiedAt: { $ne: null } }).select('_id').lean();
+    const customer = withdrawal && await Customer.findOne({ _id: withdrawal.customerId, status: 'active', kycStatus: 'approved', emailVerifiedAt: { $ne: null } }).select('_id').lean();
     if (!customer) throw new Error('Le compte n’est plus actif ou approuvé au moment du retrait.');
     const minimumGas = parseEther(config.bsc.gasTopUpBnb);
     const masterGasBalance = await provider.getBalance(signers.master.address);

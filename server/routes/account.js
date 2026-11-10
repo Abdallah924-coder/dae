@@ -18,7 +18,7 @@ const customerAuth = require('../middleware/customerAuth');
 const cryptoAssets = require('../config/cryptoAssets');
 const marketAssets = require('../config/marketAssets');
 const { customerVerificationCode } = require('../services/email');
-const { normalizePhoneNumber, sendSMS } = require('../services/infobip');
+const { normalizePhoneNumber } = require('../services/infobip');
 const auth = require('../services/customerAuth');
 const { getCustomerLedgerBalances } = require('../services/ledger');
 const { supportsMultiDocumentTransactions } = require('../services/mongoCapabilities');
@@ -81,14 +81,6 @@ function authEmailReady() {
   );
 }
 
-function smsProviderReady() {
-  return Boolean(process.env.INFOBIP_API_KEY?.trim() && process.env.INFOBIP_SENDER?.trim());
-}
-
-function authChannelsReady() {
-  return authEmailReady() && smsProviderReady();
-}
-
 function mongoTransactionsReady() {
   return supportsMultiDocumentTransactions(mongoose.connection);
 }
@@ -114,16 +106,6 @@ function createEmailChallenge(customer) {
 
 async function deliverEmailChallenge(customer, emailCode) {
   await customerVerificationCode({ email: customer.email, code: emailCode });
-}
-
-async function deliverChallenges(customer, codes) {
-  const [emailResult, smsResult] = await Promise.allSettled([
-    customerVerificationCode({ email: customer.email, code: codes.emailCode }),
-    sendSMS(customer.phone, `Code DAE Crypto : ${codes.phoneCode}. Expire dans ${auth.OTP_MINUTES} minutes. Ne le partagez pas.`),
-  ]);
-  if (emailResult.status === 'rejected' || smsResult.status === 'rejected') {
-    throw new Error('Un canal de vérification est indisponible. Réessayez ou contactez l’assistance.');
-  }
 }
 
 function normalizeEmail(value) {
@@ -233,7 +215,7 @@ router.get('/features', async (_req, res, next) => {
     accounts: {
       registration: providersReady,
       status: providersReady ? 'available' : 'unavailable',
-      recovery: authChannelsReady() && mongoTransactionsReady() && auth.publicAppOriginReady(),
+      recovery: authEmailReady() && mongoTransactionsReady() && auth.publicAppOriginReady(),
       policies: {
         termsUrl: publicPolicyUrl(process.env.CUSTOMER_TERMS_URL),
         privacyUrl: publicPolicyUrl(process.env.CUSTOMER_PRIVACY_URL),
@@ -407,7 +389,6 @@ router.post('/verify', authLimiter, auth.requireSameOrigin, async (req, res, nex
       {
         $set: {
           emailVerifiedAt: now,
-          phoneVerifiedAt: customer.phoneVerifiedAt || null,
           emailChallenge: {},
           phoneChallenge: {},
           status: 'active',
@@ -450,25 +431,23 @@ router.post('/login', authLimiter, auth.requireSameOrigin, async (req, res, next
         .status(403)
         .json({ error: 'Vérifiez votre adresse e-mail avant de vous connecter.' });
     }
-    if (!authChannelsReady()) {
+    if (!authEmailReady()) {
       return res
         .status(503)
-        .json({ error: 'La double vérification e-mail/SMS est momentanément indisponible.' });
+        .json({ error: 'La vérification par e-mail est momentanément indisponible.' });
     }
     const challengeId = auth.createSessionToken();
     const challengeHash = auth.hashToken(challengeId);
     const emailCode = auth.makeOtp();
-    const phoneCode = auth.makeOtp();
     await CustomerLoginChallenge.create({
       customerId: customer._id,
       purpose: 'login',
       challengeHash,
       emailCodeHash: auth.loginOtpHash(customer._id, challengeHash, 'email', emailCode),
-      phoneCodeHash: auth.loginOtpHash(customer._id, challengeHash, 'phone', phoneCode),
       expiresAt: new Date(Date.now() + challengeTtlMs),
     });
     try {
-      await deliverChallenges(customer, { emailCode, phoneCode });
+      await deliverEmailChallenge(customer, emailCode);
     } catch (deliveryError) {
       await CustomerLoginChallenge.deleteOne({ challengeHash, usedAt: null });
       return res.status(503).json({ error: deliveryError.message });
@@ -476,7 +455,7 @@ router.post('/login', authLimiter, auth.requireSameOrigin, async (req, res, next
     res.json({
       challengeId,
       expiresInSeconds: auth.OTP_MINUTES * 60,
-      message: 'Codes de connexion envoyés par e-mail et SMS.',
+      message: 'Un code de connexion a été envoyé par e-mail.',
     });
   } catch (error) {
     next(error);
@@ -487,14 +466,12 @@ router.post('/login/verify', authLimiter, auth.requireSameOrigin, async (req, re
   try {
     const challengeId = String(req.body.challengeId || '');
     const emailCode = String(req.body.emailCode || '').trim();
-    const phoneCode = String(req.body.phoneCode || '').trim();
     if (
       challengeId.length < 40 ||
       challengeId.length > 64 ||
-      !/^\d{6}$/.test(emailCode) ||
-      !/^\d{6}$/.test(phoneCode)
+      !/^\d{6}$/.test(emailCode)
     ) {
-      return res.status(400).json({ error: 'Codes ou défi de connexion invalides.' });
+      return res.status(400).json({ error: 'Code ou défi de connexion invalide.' });
     }
     const challengeHash = auth.hashToken(challengeId);
     const challenge = await CustomerLoginChallenge.findOneAndUpdate(
@@ -507,25 +484,15 @@ router.post('/login/verify', authLimiter, auth.requireSameOrigin, async (req, re
       },
       { $inc: { attempts: 1 } },
       { new: true },
-    ).select('+challengeHash +emailCodeHash +phoneCodeHash');
+    ).select('+challengeHash +emailCodeHash');
     if (!challenge)
       return res.status(400).json({ error: 'Défi expiré ou invalide. Recommencez la connexion.' });
-    const [emailValid, phoneValid] = await Promise.all([
-      Promise.resolve(
-        auth.safeEqualHex(
-          challenge.emailCodeHash,
-          auth.loginOtpHash(challenge.customerId, challengeHash, 'email', emailCode),
-        ),
-      ),
-      Promise.resolve(
-        auth.safeEqualHex(
-          challenge.phoneCodeHash,
-          auth.loginOtpHash(challenge.customerId, challengeHash, 'phone', phoneCode),
-        ),
-      ),
-    ]);
-    if (!emailValid || !phoneValid) {
-      return res.status(400).json({ error: 'Un ou plusieurs codes sont incorrects.' });
+    const emailValid = auth.safeEqualHex(
+      challenge.emailCodeHash,
+      auth.loginOtpHash(challenge.customerId, challengeHash, 'email', emailCode),
+    );
+    if (!emailValid) {
+      return res.status(400).json({ error: 'Le code e-mail est incorrect.' });
     }
     const claimed = await CustomerLoginChallenge.findOneAndUpdate(
       {
@@ -548,10 +515,6 @@ router.post('/login/verify', authLimiter, auth.requireSameOrigin, async (req, re
     ) {
       return res.status(403).json({ error: 'Ce compte ne peut pas ouvrir de session.' });
     }
-    if (!customer.phoneVerifiedAt) {
-      customer.phoneVerifiedAt = new Date();
-      await customer.save();
-    }
     await createSession(customer, req, res);
     res.json({ customer: auth.publicCustomer(customer) });
   } catch (error) {
@@ -561,7 +524,7 @@ router.post('/login/verify', authLimiter, auth.requireSameOrigin, async (req, re
 
 router.post('/password/forgot', recoveryLimiter, auth.requireSameOrigin, async (req, res, next) => {
   try {
-    if (!authChannelsReady() || !mongoTransactionsReady()) {
+    if (!authEmailReady() || !mongoTransactionsReady()) {
       return res.status(503).json({
         error: 'La récupération du mot de passe est temporairement indisponible. Réessayez plus tard.',
       });
@@ -574,13 +537,11 @@ router.post('/password/forgot', recoveryLimiter, auth.requireSameOrigin, async (
       email,
       status: 'active',
       emailVerifiedAt: { $ne: null },
-      phoneVerifiedAt: { $ne: null },
     });
     const challengeCustomerId = customer?._id || new mongoose.Types.ObjectId();
     const challengeId = auth.createSessionToken();
     const challengeHash = auth.hashToken(challengeId);
     const emailCode = auth.makeOtp();
-    const phoneCode = auth.makeOtp();
     await CustomerLoginChallenge.create({
       customerId: challengeCustomerId,
       purpose: 'password_reset',
@@ -590,16 +551,11 @@ router.post('/password/forgot', recoveryLimiter, auth.requireSameOrigin, async (
         `recovery:${challengeHash}:email`,
         emailCode,
       ),
-      phoneCodeHash: auth.otpHash(
-        challengeCustomerId,
-        `recovery:${challengeHash}:phone`,
-        phoneCode,
-      ),
       expiresAt: new Date(Date.now() + challengeTtlMs),
     });
     if (customer) {
       try {
-        await deliverChallenges(customer, { emailCode, phoneCode });
+        await deliverEmailChallenge(customer, emailCode);
       } catch {
         await CustomerLoginChallenge.deleteOne({ challengeHash, usedAt: null });
       }
@@ -619,15 +575,13 @@ router.post('/password/reset', recoveryLimiter, auth.requireSameOrigin, async (r
   try {
     const challengeId = String(req.body.challengeId || '');
     const emailCode = String(req.body.emailCode || '').trim();
-    const phoneCode = String(req.body.phoneCode || '').trim();
     const password = String(req.body.password || '');
     if (
       challengeId.length < 40 ||
       challengeId.length > 64 ||
-      !/^\d{6}$/.test(emailCode) ||
-      !/^\d{6}$/.test(phoneCode)
+      !/^\d{6}$/.test(emailCode)
     ) {
-      return res.status(400).json({ error: 'Défi ou codes de récupération invalides.' });
+      return res.status(400).json({ error: 'Défi ou code de récupération invalide.' });
     }
     if (password.length < 12 || password.length > 128) {
       return res.status(400).json({ error: 'Choisissez un mot de passe de 12 à 128 caractères.' });
@@ -643,7 +597,7 @@ router.post('/password/reset', recoveryLimiter, auth.requireSameOrigin, async (r
       },
       { $inc: { attempts: 1 } },
       { new: true },
-    ).select('+emailCodeHash +phoneCodeHash');
+    ).select('+emailCodeHash');
     if (!challenge) {
       return res
         .status(400)
@@ -653,12 +607,8 @@ router.post('/password/reset', recoveryLimiter, auth.requireSameOrigin, async (r
       challenge.emailCodeHash,
       auth.otpHash(challenge.customerId, `recovery:${challengeHash}:email`, emailCode),
     );
-    const phoneValid = auth.safeEqualHex(
-      challenge.phoneCodeHash,
-      auth.otpHash(challenge.customerId, `recovery:${challengeHash}:phone`, phoneCode),
-    );
-    if (!emailValid || !phoneValid) {
-      return res.status(400).json({ error: 'Un ou plusieurs codes sont incorrects.' });
+    if (!emailValid) {
+      return res.status(400).json({ error: 'Le code e-mail est incorrect.' });
     }
     const credentials = await auth.hashPassword(password);
     const session = await mongoose.startSession();
@@ -682,7 +632,6 @@ router.post('/password/reset', recoveryLimiter, auth.requireSameOrigin, async (r
             _id: challenge.customerId,
             status: 'active',
             emailVerifiedAt: { $ne: null },
-            phoneVerifiedAt: { $ne: null },
           },
           { $set: { passwordHash: credentials.hash, passwordSalt: credentials.salt } },
           { session },
@@ -896,12 +845,12 @@ router.post('/withdrawals', withdrawalLimiter, customerAuth, auth.requireSameOri
     if (!bscWallet.bscWithdrawalsConfigReady(bscStatus) || !mongoTransactionsReady()) {
       return res.status(503).json({ error: 'Les retraits sont temporairement indisponibles. Réessayez plus tard.' });
     }
-    if (customer.status !== 'active' || !customer.emailVerifiedAt || !customer.phoneVerifiedAt || customer.kycStatus !== 'approved') {
+    if (customer.status !== 'active' || !customer.emailVerifiedAt || customer.kycStatus !== 'approved') {
       return res.status(403).json({ error: 'Compte vérifié et KYC approuvé requis pour retirer.' });
     }
     const freshAuthMs = config.bsc.withdrawalFreshAuthMinutes * 60_000;
     if (!Number.isFinite(freshAuthMs) || freshAuthMs < 60_000 || Date.now() - req.customerSession.createdAt.getTime() > freshAuthMs) {
-      return res.status(401).json({ error: 'Reconnectez-vous avec vos codes e-mail et SMS avant de demander un retrait.' });
+      return res.status(401).json({ error: 'Reconnectez-vous avec votre code e-mail avant de demander un retrait.' });
     }
     const heartbeat = await BscSignerHeartbeat.findOne({ name: 'local-bsc-signer', chainId: 56, masterAddress: config.bsc.masterAddress.toLowerCase(), gasAddress: config.bsc.gasAddress.toLowerCase() }).lean();
     if (!heartbeat || Date.now() - heartbeat.lastSeenAt.getTime() > 60_000) {

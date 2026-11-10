@@ -29,6 +29,8 @@ services:
         value: https://api.infobip.com
       - key: INFOBIP_SENDER
         sync: false
+      - key: COINGECKO_API_KEY
+        sync: false
       - key: CUSTOMER_AUTH_SECRET
         sync: false
       - key: CUSTOMER_LEGAL_REVIEWED

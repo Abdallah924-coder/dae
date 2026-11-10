@@ -1945,7 +1945,6 @@ function AccountAccess({ initialMode = 'login' }) {
     password: '',
     confirmPassword: '',
     emailCode: '',
-    phoneCode: '',
     acceptTerms: false,
     acceptPrivacy: false,
   });
@@ -1990,7 +1989,6 @@ function AccountAccess({ initialMode = 'login' }) {
           body: JSON.stringify({
             challengeId,
             emailCode: form.emailCode,
-            phoneCode: form.phoneCode,
           }),
         });
         navigate(safeExchangeRedirect(route.search));
@@ -2049,7 +2047,7 @@ function AccountAccess({ initialMode = 'login' }) {
               {stage === 2
                 ? registerMode
                   ? 'Entre le code à six chiffres reçu par e-mail pour activer ton compte.'
-                  : 'Entre les codes à six chiffres reçus par e-mail et SMS.'
+                  : 'Entre le code à six chiffres reçu par e-mail.'
                 : registerMode
                   ? 'Crée ton accès personnel. Tes coordonnées seront vérifiées avant toute activité du compte.'
                   : 'Connecte-toi avec ton e-mail, puis confirme avec les codes de sécurité.'}
@@ -2171,18 +2169,6 @@ function AccountAccess({ initialMode = 'login' }) {
                     onChange={(e) => update('emailCode', e.target.value)}
                   />
                 </label>
-                {!registerMode && <label className="field-label">
-                  Code reçu par SMS
-                  <input
-                    required
-                    inputMode="numeric"
-                    pattern="[0-9]{6}"
-                    minLength="6"
-                    maxLength="6"
-                    value={form.phoneCode}
-                    onChange={(e) => update('phoneCode', e.target.value)}
-                  />
-                </label>}
               </>
             )}
             {registerMode && stage === 1 && (
@@ -2273,8 +2259,8 @@ function AccountAccess({ initialMode = 'login' }) {
             <p>
               <b>01</b>
               <span>
-                <strong>Double vérification</strong>
-                <small>E-mail et téléphone confirmés séparément.</small>
+                <strong>Code de sécurité</strong>
+                <small>Un code de sécurité est envoyé à votre adresse e-mail.</small>
               </span>
             </p>
             <p>
@@ -2298,7 +2284,6 @@ function PasswordRecovery() {
   const [form, setForm] = useState({
     email: '',
     emailCode: '',
-    phoneCode: '',
     password: '',
     confirmation: '',
   });
@@ -2334,7 +2319,6 @@ function PasswordRecovery() {
           body: JSON.stringify({
             challengeId,
             emailCode: form.emailCode,
-            phoneCode: form.phoneCode,
             password: form.password,
           }),
         });
@@ -2366,9 +2350,9 @@ function PasswordRecovery() {
             </h1>
             <p>
               {stage === 1
-                ? 'Nous enverrons des codes séparés à l’adresse e-mail et au téléphone associés au compte.'
+                ? 'Un code de récupération sera envoyé à l’adresse e-mail associée au compte.'
                 : stage === 2
-                  ? 'Saisis les deux codes reçus, puis choisis un nouveau mot de passe.'
+                  ? 'Saisis le code reçu par e-mail, puis choisis un nouveau mot de passe.'
                   : 'Toutes les sessions ouvertes ont été fermées.'}
             </p>
           </div>
@@ -2408,18 +2392,6 @@ function PasswordRecovery() {
                       autoComplete="one-time-code"
                       value={form.emailCode}
                       onChange={(event) => update('emailCode', event.target.value)}
-                    />
-                  </label>
-                  <label className="field-label">
-                    Code reçu par SMS
-                    <input
-                      required
-                      inputMode="numeric"
-                      pattern="[0-9]{6}"
-                      minLength="6"
-                      maxLength="6"
-                      value={form.phoneCode}
-                      onChange={(event) => update('phoneCode', event.target.value)}
                     />
                   </label>
                   <label className="field-label">
@@ -3623,7 +3595,7 @@ function CustomerPortal() {
                 <span className="eyebrow plain">ACCÈS AU COMPTE</span>
                 <h2>Sessions ouvertes</h2>
                 <p>
-                  La connexion DAE demande une confirmation par e-mail et SMS. Consultez les
+                  La connexion DAE est confirmée par un code envoyé par e-mail. Consultez les
                   sessions actives ci-dessous et déconnectez les autres appareils si nécessaire.
                 </p>
                 <div className="module-state">
@@ -4046,11 +4018,20 @@ function Admin() {
         <section>
           <span className="eyebrow plain">ESPACE ÉQUIPE</span>
           <h1>Connexion à l’administration</h1>
-          <p>Accédez aux commandes, aux taux et aux paramètres de la plateforme.</p>
+          <p>
+            Réservé à l’adresse configurée pour l’administration. Saisissez cet e-mail et son mot
+            de passe pour accéder aux commandes, aux taux et aux paramètres.
+          </p>
           <form onSubmit={login}>
             <label className="field-label">
               E-mail
-              <input type="email" name="email" required autoComplete="username" />
+              <input
+                type="email"
+                name="email"
+                required
+                autoComplete="username"
+                placeholder="Adresse e-mail d’administration"
+              />
             </label>
             <label className="field-label">
               Mot de passe
@@ -4268,15 +4249,15 @@ function Admin() {
                             label: 'Inscription des clients',
                             enabled: readiness.accounts.registration,
                             detail: readiness.accounts.registration
-                              ? 'Canaux de vérification et documents publiés configurés.'
-                              : 'E-mail/SMS, secret, origine HTTPS canonique et documents juridiques requis.',
+                              ? 'E-mail de vérification et documents publiés configurés.'
+                              : 'E-mail, secret, origine HTTPS canonique et documents juridiques requis.',
                           },
                           {
                             label: 'Récupération sécurisée',
                             enabled: readiness.accounts.recovery,
                             detail: readiness.accounts.recovery
-                              ? 'Codes e-mail/SMS et révocation atomique des sessions disponibles.'
-                              : 'Canaux e-mail/SMS, origine HTTPS canonique et transactions MongoDB requis.',
+                              ? 'Code e-mail et révocation atomique des sessions disponibles.'
+                              : 'E-mail, origine HTTPS canonique et transactions MongoDB requis.',
                           },
                           {
                             label: 'Transactions MongoDB',
@@ -4568,7 +4549,7 @@ function Admin() {
                     <thead>
                       <tr>
                         <th>Client</th>
-                        <th>Contact vérifié</th>
+                        <th>Contacts</th>
                         <th>Compte</th>
                         <th>KYC</th>
                         <th>Inscription</th>
@@ -4595,16 +4576,7 @@ function Admin() {
                             >
                               E-mail {customer.emailVerifiedAt ? 'confirmé' : 'non confirmé'}
                             </span>
-                            <small
-                              className={
-                                customer.phoneVerifiedAt
-                                  ? 'customer-verified'
-                                  : 'customer-unverified'
-                              }
-                            >
-                              SMS {customer.phoneVerifiedAt ? 'confirmé' : 'non confirmé'} ·{' '}
-                              {customer.phone}
-                            </small>
+                            <small>Téléphone · {customer.phone}</small>
                           </td>
                           <td>
                             <span className={`customer-admin-state state-${customer.status}`}>
@@ -4720,7 +4692,7 @@ function Admin() {
                   </div>
                 </div>
                 <p className="customer-admin-footnote">
-                  La confirmation e-mail/SMS ne vaut pas vérification d’identité.
+                  La confirmation de l’adresse e-mail ne vaut pas vérification d’identité.
                 </p>
               </div>
             </>

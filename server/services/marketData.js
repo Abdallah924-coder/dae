@@ -15,6 +15,13 @@ const MAX_STALE_MS = 30 * 60_000;
 const RETRY_DELAY_MS = 5 * 60_000;
 const HISTORY_RETRY_DELAY_MS = 60_000;
 
+function coinGeckoHeaders() {
+  const headers = { accept: 'application/json' };
+  const apiKey = process.env.COINGECKO_API_KEY?.trim();
+  if (apiKey) headers['x-cg-demo-api-key'] = apiKey;
+  return headers;
+}
+
 async function fetchCoinPaprikaPrices() {
   const response = await fetch('https://api.coinpaprika.com/v1/tickers?quotes=USD', {
     headers: { accept: 'application/json' },
@@ -46,7 +53,7 @@ async function fetchCoinGeckoPrices() {
   const response = await fetch(
     `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(ids)}&vs_currencies=usd&include_24hr_change=true`,
     {
-      headers: { accept: 'application/json' },
+      headers: coinGeckoHeaders(),
       signal: AbortSignal.timeout(8000),
     },
   );
@@ -144,7 +151,7 @@ async function fetchMarketHistory(asset) {
   const query = new URLSearchParams({ vs_currency: 'usd', days: '1' });
   const response = await fetch(
     `https://api.coingecko.com/api/v3/coins/${encodeURIComponent(asset.coinGeckoId)}/market_chart?${query}`,
-    { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(12000) },
+    { headers: coinGeckoHeaders(), signal: AbortSignal.timeout(12000) },
   );
   if (!response.ok) {
     const error = new Error(`CoinGecko a répondu avec le statut ${response.status}`);
