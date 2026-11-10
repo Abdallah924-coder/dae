@@ -3,7 +3,7 @@
 const express = require('express');
 const crypto = require('node:crypto');
 const mongoose = require('mongoose');
-const { isAddress, parseUnits } = require('ethers');
+const { formatUnits, isAddress, parseUnits } = require('ethers');
 const rateLimit = require('express-rate-limit');
 const Customer = require('../models/Customer');
 const CustomerLoginChallenge = require('../models/CustomerLoginChallenge');
@@ -13,11 +13,20 @@ const WalletCounter = require('../models/WalletCounter');
 const Order = require('../models/Order');
 const Deposit = require('../models/Deposit');
 const Withdrawal = require('../models/Withdrawal');
+const CustomerTransfer = require('../models/CustomerTransfer');
 const StakePosition = require('../models/StakePosition');
 const customerAuth = require('../middleware/customerAuth');
 const cryptoAssets = require('../config/cryptoAssets');
 const marketAssets = require('../config/marketAssets');
 const { customerVerificationCode } = require('../services/email');
+const {
+  adminTransferFeeEmail,
+  sendEmail,
+  transferCompletedEmail,
+  transferVerificationEmail,
+  withdrawalEmail,
+} = require('../services/email');
+const { enqueueEmail } = require('../services/emailOutbox');
 const { normalizePhoneNumber } = require('../services/infobip');
 const auth = require('../services/customerAuth');
 const { getCustomerLedgerBalances } = require('../services/ledger');
@@ -28,6 +37,7 @@ const BscSignerHeartbeat = require('../models/BscSignerHeartbeat');
 const BscIndexerHeartbeat = require('../models/BscIndexerHeartbeat');
 const { config } = require('../config');
 const { reserveBscWithdrawal } = require('../services/bscWithdrawal');
+const { buildTransferPostings, calculateTransferAmounts } = require('../services/customerTransfer');
 
 const router = express.Router();
 const challengeTtlMs = auth.OTP_MINUTES * 60 * 1000;
@@ -36,6 +46,7 @@ const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 8 });
 const resendLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 3 });
 const recoveryLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 5 });
 const withdrawalLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 5 });
+const transferLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 5 });
 const PHONE_RE = /^\+?[1-9]\d{7,14}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_HD_ACCOUNT_INDEX = 0x7fffffff;
@@ -829,6 +840,244 @@ router.get('/wallets', customerAuth, async (req, res, next) => {
   }
 });
 
+router.post('/transfers/challenge', transferLimiter, customerAuth, auth.requireSameOrigin, async (req, res, next) => {
+  let transfer;
+  try {
+    const sender = req.customer;
+    if (sender.status !== 'active' || !sender.emailVerifiedAt || sender.kycStatus !== 'approved') {
+      return res.status(403).json({ error: 'Compte actif, e-mail vérifié et KYC approuvé requis pour envoyer.' });
+    }
+    const recipientEmail = normalizeEmail(req.body?.recipientEmail);
+    if (!EMAIL_RE.test(recipientEmail) || recipientEmail.length > 254) {
+      return res.status(400).json({ error: 'Saisissez une adresse e-mail valide.' });
+    }
+    if (recipientEmail === sender.email) {
+      return res.status(400).json({ error: 'Vous ne pouvez pas vous envoyer des fonds à vous-même.' });
+    }
+    const recipient = await Customer.findOne({
+      email: recipientEmail,
+      status: 'active',
+      kycStatus: 'approved',
+      emailVerifiedAt: { $ne: null },
+    }).select('_id email').lean();
+    if (!recipient) {
+      return res.status(404).json({ error: 'Aucun compte DAE éligible ne correspond à cet e-mail.' });
+    }
+    const feeRecipientEmail = normalizeEmail(process.env.ADMIN_EMAIL);
+    if (!feeRecipientEmail || !EMAIL_RE.test(feeRecipientEmail)) {
+      return res.status(503).json({ error: 'Le compte administrateur recevant les commissions P2P n’est pas configuré.' });
+    }
+    const feeRecipient = await Customer.findOne({
+      email: feeRecipientEmail,
+      status: 'active',
+      kycStatus: 'approved',
+      emailVerifiedAt: { $ne: null },
+    }).select('_id email').lean();
+    if (!feeRecipient) {
+      return res.status(503).json({
+        error: 'Les transferts P2P sont indisponibles : le compte client administrateur lié à ADMIN_EMAIL doit être créé, vérifié et validé.',
+      });
+    }
+    let amounts;
+    try {
+      amounts = calculateTransferAmounts(req.body?.amount);
+    } catch (error) {
+      return res.status(400).json({ error: error.message });
+    }
+    const challengeId = auth.createSessionToken();
+    const challengeHash = auth.hashToken(challengeId);
+    const code = auth.makeOtp();
+    transfer = await CustomerTransfer.create({
+      senderId: sender._id,
+      recipientId: recipient._id,
+      feeRecipientId: feeRecipient._id,
+      senderEmail: sender.email,
+      recipientEmail: recipient.email,
+      feeRecipientEmail: feeRecipient.email,
+      ...amounts,
+      challengeHash,
+      codeHash: auth.otpHash(sender._id, `p2p-transfer:${challengeHash}`, code),
+      expiresAt: new Date(Date.now() + challengeTtlMs),
+    });
+    try {
+      await sendEmail(transferVerificationEmail({
+        email: sender.email,
+        code,
+        amount: formatUnits(amounts.amountAtomic, 18),
+        recipientEmail: recipient.email,
+      }));
+    } catch (error) {
+      await CustomerTransfer.updateOne({ _id: transfer._id, status: 'pending' }, {
+        $set: { status: 'expired' },
+      });
+      throw error;
+    }
+    return res.status(202).json({
+      transfer: {
+        challengeId,
+        amount: formatUnits(amounts.amountAtomic, 18),
+        fee: formatUnits(amounts.feeAtomic, 18),
+        recipientAmount: formatUnits(amounts.recipientAmountAtomic, 18),
+        recipientEmail: recipient.email,
+        expiresAt: transfer.expiresAt,
+      },
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post('/transfers/confirm', transferLimiter, customerAuth, auth.requireSameOrigin, async (req, res, next) => {
+  const challengeId = String(req.body?.challengeId || '');
+  const code = String(req.body?.code || '').trim();
+  if (!/^[A-Za-z0-9_-]{43}$/.test(challengeId) || !/^\d{6}$/.test(code)) {
+    return res.status(400).json({ error: 'Code de confirmation invalide ou expiré.' });
+  }
+  const challengeHash = auth.hashToken(challengeId);
+  try {
+    const transfer = await CustomerTransfer.findOne({
+      challengeHash,
+      senderId: req.customer._id,
+    }).select('+challengeHash +codeHash');
+    if (!transfer) return res.status(404).json({ error: 'Transfert introuvable ou expiré.' });
+    if (transfer.status === 'completed') {
+      return res.json({ transfer: { status: transfer.status, reference: transfer.ledgerReference } });
+    }
+    if (transfer.status !== 'pending' || transfer.expiresAt <= new Date() || transfer.attempts >= challengeMaxAttempts) {
+      return res.status(410).json({ error: 'Code de confirmation expiré. Recommencez l’envoi.' });
+    }
+    const expectedCode = auth.otpHash(req.customer._id, `p2p-transfer:${challengeHash}`, code);
+    if (!auth.safeEqualHex(transfer.codeHash, expectedCode)) {
+      const attempts = await CustomerTransfer.updateOne({
+        _id: transfer._id,
+        status: 'pending',
+        attempts: { $lt: challengeMaxAttempts },
+      }, {
+        $inc: { attempts: 1 },
+        ...(transfer.attempts + 1 >= challengeMaxAttempts ? { $set: { status: 'expired' } } : {}),
+      });
+      return res.status(attempts.modifiedCount ? 400 : 410).json({
+        error: attempts.modifiedCount ? 'Code incorrect.' : 'Code de confirmation expiré. Recommencez l’envoi.',
+      });
+    }
+    if (!supportsMultiDocumentTransactions(mongoose.connection)) {
+      return res.status(503).json({ error: 'Le transfert interne nécessite une base MongoDB avec transactions.' });
+    }
+    const session = await mongoose.startSession();
+    let completed;
+    try {
+      await session.withTransaction(async () => {
+        const current = await CustomerTransfer.findOne({
+          _id: transfer._id,
+          senderId: req.customer._id,
+          status: 'pending',
+          expiresAt: { $gt: new Date() },
+        }).session(session);
+        if (!current) throw Object.assign(new Error('Transfert expiré ou déjà confirmé.'), { code: 'ERR_TRANSFER_EXPIRED' });
+        const sender = await Customer.findOne({
+          _id: current.senderId,
+          status: 'active',
+          kycStatus: 'approved',
+          emailVerifiedAt: { $ne: null },
+        }).select('_id email').session(session).lean();
+        const recipient = await Customer.findOne({
+          _id: current.recipientId,
+          email: current.recipientEmail,
+          status: 'active',
+          kycStatus: 'approved',
+          emailVerifiedAt: { $ne: null },
+        }).select('_id email').session(session).lean();
+        const feeRecipient = await Customer.findOne({
+          _id: current.feeRecipientId,
+          email: current.feeRecipientEmail,
+          status: 'active',
+          kycStatus: 'approved',
+          emailVerifiedAt: { $ne: null },
+        }).select('_id email').session(session).lean();
+        if (!sender || !recipient || !feeRecipient) {
+          throw Object.assign(new Error('Un compte n’est plus éligible au transfert.'), { code: 'ERR_TRANSFER_ACCOUNT_INELIGIBLE' });
+        }
+        const ledger = await require('../services/ledger').postLedgerTransaction({
+          type: 'p2p_transfer',
+          idempotencyKey: `p2p-transfer:${current._id}`,
+          sourceRef: String(current._id),
+          createdBy: 'customer-p2p-transfer',
+          metadata: {
+            senderId: String(sender._id),
+            recipientId: String(recipient._id),
+            feeDestination: `customer:${feeRecipient._id}:available`,
+          },
+          postings: buildTransferPostings({
+            senderId: sender._id,
+            recipientId: recipient._id,
+            feeRecipientId: feeRecipient._id,
+            amountAtomic: current.amountAtomic,
+            feeAtomic: current.feeAtomic,
+            recipientAmountAtomic: current.recipientAmountAtomic,
+          }),
+        }, { session });
+        current.status = 'completed';
+        current.ledgerReference = ledger.transaction.reference;
+        await current.save({ session });
+        await enqueueEmail({
+          dedupeKey: `p2p-transfer:${current._id}:sender`,
+          ...transferCompletedEmail({
+            email: sender.email,
+            direction: 'sent',
+            amount: formatUnits(current.amountAtomic, 18),
+            fee: formatUnits(current.feeAtomic, 18),
+            counterpartyEmail: recipient.email,
+            reference: ledger.transaction.reference,
+          }),
+        }, { session });
+        await enqueueEmail({
+          dedupeKey: `p2p-transfer:${current._id}:recipient`,
+          ...transferCompletedEmail({
+            email: recipient.email,
+            direction: 'received',
+            amount: formatUnits(current.recipientAmountAtomic, 18),
+            fee: '0',
+            counterpartyEmail: sender.email,
+            reference: ledger.transaction.reference,
+          }),
+        }, { session });
+        await enqueueEmail({
+          dedupeKey: `p2p-transfer:${current._id}:admin`,
+          ...adminTransferFeeEmail({
+            email: process.env.ADMIN_EMAIL?.trim(),
+            amount: formatUnits(current.feeAtomic, 18),
+            senderEmail: sender.email,
+            recipientEmail: recipient.email,
+            feeRecipientEmail: feeRecipient.email,
+            reference: ledger.transaction.reference,
+          }),
+        }, { session });
+        completed = {
+          reference: ledger.transaction.reference,
+          amount: formatUnits(current.amountAtomic, 18),
+          fee: formatUnits(current.feeAtomic, 18),
+          recipientAmount: formatUnits(current.recipientAmountAtomic, 18),
+          recipientEmail: recipient.email,
+        };
+      });
+    } finally {
+      await session.endSession();
+    }
+    return res.json({ transfer: { status: 'completed', ...completed } });
+  } catch (error) {
+    if (error.code === 'ERR_LEDGER_INSUFFICIENT_FUNDS') {
+      return res.status(409).json({ error: 'Solde USDT BEP20 disponible insuffisant pour cet envoi.' });
+    }
+    if (error.code === 'ERR_TRANSFER_EXPIRED') {
+      return res.status(410).json({ error: 'Code de confirmation expiré ou transfert déjà traité.' });
+    }
+    if (error.code === 'ERR_TRANSFER_ACCOUNT_INELIGIBLE') {
+      return res.status(409).json({ error: 'Un compte n’est plus éligible à ce transfert.' });
+    }
+    return next(error);
+  }
+});
+
 router.post('/withdrawals', withdrawalLimiter, customerAuth, auth.requireSameOrigin, async (req, res, next) => {
   let withdrawal;
   let transferJob;
@@ -886,10 +1135,33 @@ router.post('/withdrawals', withdrawalLimiter, customerAuth, auth.requireSameOri
     }
     const ledger = await reserveBscWithdrawal(withdrawal);
     ledgerPosted = true;
-    await Promise.all([
-      Withdrawal.updateOne({ _id: withdrawal._id, status: { $in: ['requested', 'queued'] } }, { $set: { status: 'queued', ledgerReference: ledger.transaction.reference } }),
-      BscTransferJob.updateOne({ _id: transferJob._id, status: { $in: ['prepared', 'preparing'] } }, { $set: { status: 'queued' } }),
-    ]);
+    const session = await mongoose.startSession();
+    try {
+      await session.withTransaction(async () => {
+        await Withdrawal.updateOne(
+          { _id: withdrawal._id, status: { $in: ['requested', 'queued'] } },
+          { $set: { status: 'queued', ledgerReference: ledger.transaction.reference } },
+          { session },
+        );
+        await BscTransferJob.updateOne(
+          { _id: transferJob._id, status: { $in: ['prepared', 'preparing'] } },
+          { $set: { status: 'queued' } },
+          { session },
+        );
+        await enqueueEmail({
+          dedupeKey: `withdrawal:${withdrawal._id}:queued`,
+          ...withdrawalEmail({
+            email: customer.email,
+            amount: amountText,
+            asset: 'USDT',
+            status: 'queued',
+            reference: String(withdrawal._id),
+          }),
+        }, { session });
+      });
+    } finally {
+      await session.endSession();
+    }
     const current = await Withdrawal.findById(withdrawal._id).select('status txHash').lean();
     return res.status(202).json({ withdrawal: { id: String(withdrawal._id), status: current?.status || 'queued', amount: amountText, asset: 'USDT', network: 'BEP20', txHash: current?.txHash || null } });
   } catch (error) {
@@ -914,7 +1186,7 @@ router.get('/funding-activity', customerAuth, async (req, res, next) => {
   try {
     res.set('Cache-Control', 'no-store');
     const pageSize = 25;
-    const types = ['deposit', 'withdrawal', 'staking', 'buy', 'sell'];
+    const types = ['deposit', 'withdrawal', 'staking', 'buy', 'sell', 'transfer'];
     const requestedType = String(req.query.type || 'all');
     if (requestedType !== 'all' && !types.includes(requestedType)) {
       return res.status(400).json({ error: 'Type d’opération invalide.' });
@@ -939,15 +1211,33 @@ router.get('/funding-activity', customerAuth, async (req, res, next) => {
       { type: 'staking', model: StakePosition },
       { type: 'buy', model: Order, filter: { mode: 'buy' } },
       { type: 'sell', model: Order, filter: { mode: 'sell' } },
+      {
+        type: 'transfer',
+        model: CustomerTransfer,
+        filter: {
+          $or: [
+            { senderId: req.customer._id },
+            { recipientId: req.customer._id },
+            { feeRecipientId: req.customer._id },
+          ],
+        },
+      },
     ].filter((entry) => requestedType === 'all' || requestedType === entry.type);
     const rows = (await Promise.all(
-      models.map(({ type, model, filter = {} }) => model.find({ customerId: req.customer._id, ...filter, ...cursorFilter })
-        .select('asset network amountAtomic feeAtomic decimals status txHash ref amountCrypto amountXaf fulfillment createdAt productId lockDays rewardRateBps startsAt maturesAt')
-        .sort({ createdAt: -1, _id: -1 })
-        .limit(pageSize + 1)
-        .lean()
-        .then((items) => items.map((item) => ({ ...item, type }))),
-      ),
+      models.map(({ type, model, filter = {} }) => {
+        const ownerFilter = type === 'transfer'
+          ? filter
+          : { customerId: req.customer._id, ...filter };
+        const query = Object.keys(cursorFilter).length
+          ? { $and: [ownerFilter, cursorFilter] }
+          : ownerFilter;
+        return model.find(query)
+          .select('asset network amountAtomic feeAtomic recipientAmountAtomic decimals status txHash ledgerReference ref amountCrypto amountXaf fulfillment createdAt productId lockDays rewardRateBps startsAt maturesAt senderId recipientId feeRecipientId senderEmail recipientEmail expiresAt')
+          .sort({ createdAt: -1, _id: -1 })
+          .limit(pageSize + 1)
+          .lean()
+          .then((items) => items.map((item) => ({ ...item, type })));
+      }),
     )).flat().sort((a, b) => b.createdAt - a.createdAt || String(b._id).localeCompare(String(a._id)));
     const page = rows.slice(0, pageSize);
     const safeAmount = (atomic, decimals) => {
@@ -955,19 +1245,38 @@ router.get('/funding-activity', customerAuth, async (req, res, next) => {
       const digits = String(atomic).padStart(decimals + 1, '0');
       return decimals ? `${digits.slice(0, -decimals)}.${digits.slice(-decimals)}` : digits;
     };
-    const activities = page.map((item) => ({
-      id: String(item._id), type: item.type, status: item.status, asset: item.asset,
+    const activities = page.map((item) => {
+      const isTransfer = item.type === 'transfer';
+      const transferSent = isTransfer && String(item.senderId) === String(req.customer._id);
+      const transferReceived = isTransfer && String(item.recipientId) === String(req.customer._id);
+      const transferFeeRecipient = isTransfer && String(item.feeRecipientId) === String(req.customer._id);
+      const transferFeeOnly = isTransfer
+        && transferFeeRecipient
+        && !transferSent
+        && !transferReceived;
+      return ({
+      id: String(item._id), type: item.type,
+      status: isTransfer && item.status === 'pending' && item.expiresAt <= new Date() ? 'expired' : item.status,
+      asset: item.asset,
       network: item.network,
       amount: item.type === 'buy' || item.type === 'sell'
         ? String(item.amountCrypto ?? '')
-        : safeAmount(item.amountAtomic, item.decimals),
-      fee: item.type === 'withdrawal' ? safeAmount(item.feeAtomic, item.decimals) : null,
-      reference: item.txHash || item.ref || String(item._id),
+        : transferFeeOnly
+          ? safeAmount(item.feeAtomic, item.decimals)
+          : safeAmount(isTransfer && !transferSent ? item.recipientAmountAtomic : item.amountAtomic, item.decimals),
+      fee: item.type === 'withdrawal' || (isTransfer && transferSent) ? safeAmount(item.feeAtomic, item.decimals) : null,
+      feeEarned: transferFeeRecipient ? safeAmount(item.feeAtomic, item.decimals) : null,
+      reference: item.txHash || item.ledgerReference || item.ref || String(item._id),
       amountXaf: item.type === 'buy' || item.type === 'sell' ? item.amountXaf : null,
       fulfillment: item.type === 'buy' ? item.fulfillment : undefined,
       createdAt: item.createdAt,
+      ...(isTransfer ? {
+        transferDirection: transferFeeOnly ? 'fee' : transferSent ? 'sent' : 'received',
+        counterpartyEmail: transferSent ? item.recipientEmail : item.senderEmail,
+      } : {}),
       ...(item.type === 'staking' ? { productId: item.productId, lockDays: item.lockDays, rewardRateBps: item.rewardRateBps, startsAt: item.startsAt, maturesAt: item.maturesAt } : {}),
-    }));
+    });
+    });
     const hasMore = rows.length > pageSize;
     const last = page.at(-1);
     const nextCursor = hasMore && last

@@ -3,7 +3,7 @@
 const mongoose = require('mongoose');
 const path = require('node:path');
 require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env.signer') });
-const { Contract, HDNodeWallet, parseEther, getAddress, keccak256, Transaction } = require('ethers');
+const { Contract, HDNodeWallet, formatUnits, parseEther, getAddress, keccak256, Transaction } = require('ethers');
 const connectDB = require('../config/db');
 const { config, BSC_PEG_USD_CONTRACT } = require('../config');
 const { logger } = require('../lib/logger');
@@ -17,6 +17,8 @@ const { getProvider } = require('../services/bsc');
 const { postLedgerTransaction } = require('../services/ledger');
 const { reserveBscWithdrawal } = require('../services/bscWithdrawal');
 const { encryptSignedTransaction, decryptSignedTransaction } = require('../services/bscSigningJournal');
+const { enqueueEmail } = require('../services/emailOutbox');
+const { withdrawalEmail } = require('../services/email');
 
 const TOKEN_ABI = [
   'function decimals() view returns (uint8)',
@@ -80,7 +82,31 @@ async function finishWithdrawal(job) {
       { accountRef: 'system:bsc-custody', asset: 'USDT', network: 'BEP20', decimals: DECIMALS, side: 'credit', amountAtomic: withdrawal.amountAtomic },
     ],
   });
-  await Withdrawal.updateOne({ _id: withdrawal._id }, { $set: { status: 'completed', txHash: job.txHash } });
+  const session = await mongoose.startSession();
+  try {
+    await session.withTransaction(async () => {
+      const updated = await Withdrawal.updateOne(
+        { _id: withdrawal._id, status: { $in: ['queued', 'broadcast'] } },
+        { $set: { status: 'completed', txHash: job.txHash } },
+        { session },
+      );
+      if (updated.modifiedCount !== 1) return;
+      const customer = await Customer.findById(withdrawal.customerId).select('email').session(session).lean();
+      if (!customer?.email) throw new Error('E-mail client introuvable pour notifier le retrait terminé.');
+      await enqueueEmail({
+        dedupeKey: `withdrawal:${withdrawal._id}:completed`,
+        ...withdrawalEmail({
+          email: customer.email,
+          amount: formatUnits(withdrawal.amountAtomic, withdrawal.decimals),
+          asset: withdrawal.asset,
+          status: 'completed',
+          reference: job.txHash,
+        }),
+      }, { session });
+    });
+  } finally {
+    await session.endSession();
+  }
 }
 
 async function failWithdrawal(job, message) {
@@ -95,7 +121,32 @@ async function failWithdrawal(job, message) {
       { accountRef: `customer:${withdrawal.customerId}:available`, asset: 'USDT', network: 'BEP20', decimals: DECIMALS, side: 'credit', amountAtomic: withdrawal.amountAtomic },
     ],
   });
-  await Withdrawal.updateOne({ _id: withdrawal._id, status: { $nin: ['completed', 'failed'] } }, { $set: { status: 'failed', reviewNote: String(message).slice(0, 500) } });
+  const session = await mongoose.startSession();
+  try {
+    await session.withTransaction(async () => {
+      const updated = await Withdrawal.updateOne(
+        { _id: withdrawal._id, status: { $nin: ['completed', 'failed'] } },
+        { $set: { status: 'failed', reviewNote: String(message).slice(0, 500) } },
+        { session },
+      );
+      if (updated.modifiedCount !== 1) return;
+      const customer = await Customer.findById(withdrawal.customerId).select('email').session(session).lean();
+      if (!customer?.email) throw new Error('E-mail client introuvable pour notifier le retrait échoué.');
+      await enqueueEmail({
+        dedupeKey: `withdrawal:${withdrawal._id}:failed`,
+        ...withdrawalEmail({
+          email: customer.email,
+          amount: formatUnits(withdrawal.amountAtomic, withdrawal.decimals),
+          asset: withdrawal.asset,
+          status: 'failed',
+          reference: String(withdrawal._id),
+          explanation: String(message).slice(0, 300),
+        }),
+      }, { session });
+    });
+  } finally {
+    await session.endSession();
+  }
 }
 
 async function finalizeFailedJob(job) {

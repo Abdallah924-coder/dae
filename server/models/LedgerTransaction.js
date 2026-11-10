@@ -31,7 +31,7 @@ const ledgerTransactionSchema = new mongoose.Schema(
     requestHash: { type: String, required: true, immutable: true, minlength: 64, maxlength: 64 },
     type: {
       type: String,
-      enum: ['deposit', 'withdrawal', 'exchange', 'staking_lock', 'staking_release', 'adjustment'],
+      enum: ['deposit', 'withdrawal', 'exchange', 'p2p_transfer', 'staking_lock', 'staking_release', 'adjustment'],
       required: true,
       index: true,
     },

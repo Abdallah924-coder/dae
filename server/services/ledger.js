@@ -10,6 +10,7 @@ const POSTED_TYPES = new Set([
   'deposit',
   'withdrawal',
   'exchange',
+  'p2p_transfer',
   'staking_lock',
   'staking_release',
   'adjustment',

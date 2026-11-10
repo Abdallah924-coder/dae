@@ -136,6 +136,67 @@ function customerVerificationCode({ email, code }) {
     html: `<p>Votre code de vérification DAE Crypto :</p><p style="font-size:24px;font-weight:700;letter-spacing:6px">${escapeHtml(code)}</p><p>Il expire dans 10 minutes. Ne le partagez avec personne.</p>`,
   });
 }
+
+function depositCreditedEmail({ email, amount, asset, network, reference }) {
+  const text = `Bonjour,\n\nVotre dépôt de ${amount} ${asset} sur ${network} a été confirmé et crédité sur votre compte DAE Crypto.\nRéférence : ${reference}\n\nDAE Crypto`;
+  return {
+    to: email,
+    subject: `Dépôt crédité — ${amount} ${asset}`,
+    text,
+    html: `<p>Bonjour,</p><p>Votre dépôt de <strong>${escapeHtml(amount)} ${escapeHtml(asset)}</strong> sur ${escapeHtml(network)} a été confirmé et crédité sur votre compte.</p><p>Référence : <code>${escapeHtml(reference)}</code></p><p>DAE Crypto</p>`,
+  };
+}
+
+function withdrawalEmail({ email, amount, asset, status, reference, explanation = '' }) {
+  const labels = {
+    queued: ['demande reçue', 'Votre demande de retrait est en file de traitement.'],
+    completed: ['retrait confirmé', 'Votre retrait est confirmé sur le réseau.'],
+    failed: ['retrait échoué', 'Votre retrait a échoué et les fonds réservés ont été libérés sur votre solde.'],
+  };
+  const [title, defaultExplanation] = labels[status] || ['mise à jour du retrait', 'Le statut de votre retrait a été mis à jour.'];
+  const details = explanation || defaultExplanation;
+  const text = `Bonjour,\n\n${details}\nMontant : ${amount} ${asset}\nRéférence : ${reference}\n\nDAE Crypto`;
+  return {
+    to: email,
+    subject: `${title} — ${amount} ${asset}`,
+    text,
+    html: `<p>Bonjour,</p><p>${escapeHtml(details)}</p><p>Montant : <strong>${escapeHtml(amount)} ${escapeHtml(asset)}</strong><br>Référence : <code>${escapeHtml(reference)}</code></p><p>DAE Crypto</p>`,
+  };
+}
+
+function transferVerificationEmail({ email, code, amount, recipientEmail }) {
+  const text = `Confirmez votre envoi de ${amount} USDT à ${recipientEmail} en saisissant ce code : ${code}. Le code expire dans 10 minutes. Ne le partagez avec personne.`;
+  return {
+    to: email,
+    subject: 'Confirmez votre transfert DAE',
+    text,
+    html: `<p>Confirmez l’envoi de <strong>${escapeHtml(amount)} USDT</strong> à <strong>${escapeHtml(recipientEmail)}</strong>.</p><p>Votre code :</p><p style="font-size:24px;font-weight:700;letter-spacing:6px">${escapeHtml(code)}</p><p>Le code expire dans 10 minutes. Ne le partagez avec personne.</p>`,
+  };
+}
+
+function transferCompletedEmail({ email, direction, amount, fee, counterpartyEmail, reference }) {
+  const sent = direction === 'sent';
+  const text = sent
+    ? `Votre transfert de ${amount} USDT vers ${counterpartyEmail} est terminé. Frais : ${fee} USDT. Référence : ${reference}.`
+    : `Vous avez reçu ${amount} USDT de ${counterpartyEmail}. Référence : ${reference}.`;
+  return {
+    to: email,
+    subject: sent ? `Transfert envoyé — ${amount} USDT` : `USDT reçus — ${amount} USDT`,
+    text: `${text}\n\nDAE Crypto`,
+    html: `<p>${escapeHtml(text)}</p><p>DAE Crypto</p>`,
+  };
+}
+
+function adminTransferFeeEmail({ email, amount, senderEmail, recipientEmail, reference }) {
+  const text = `Commission P2P créditée au compte client administrateur DAE.\nCommission : ${amount} USDT\nExpéditeur : ${senderEmail}\nDestinataire : ${recipientEmail}\nRéférence : ${reference}`;
+  return {
+    to: email,
+    subject: `Nouvelle commission P2P — ${amount} USDT`,
+    text,
+    html: `<p>Commission P2P créditée au compte client administrateur DAE.</p><p>Commission : <strong>${escapeHtml(amount)} USDT</strong></p><p>Expéditeur : ${escapeHtml(senderEmail)}<br>Destinataire : ${escapeHtml(recipientEmail)}<br>Référence : <code>${escapeHtml(reference)}</code></p>`,
+  };
+}
+
 module.exports = {
   sendEmail,
   orderSubmitted,
@@ -143,4 +204,9 @@ module.exports = {
   orderStatusChanged,
   contactMessage,
   customerVerificationCode,
+  depositCreditedEmail,
+  withdrawalEmail,
+  transferVerificationEmail,
+  transferCompletedEmail,
+  adminTransferFeeEmail,
 };

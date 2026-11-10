@@ -73,6 +73,7 @@ const statusNames = {
 const activityTypeNames = {
   deposit: 'Dépôt',
   withdrawal: 'Retrait',
+  transfer: 'Transfert P2P',
   buy: 'Achat',
   sell: 'Vente',
   staking: 'Staking',
@@ -80,12 +81,14 @@ const activityTypeNames = {
 const activityStatusNames = {
   detected: 'Détecté',
   confirming: 'Confirmations en cours',
+  expired: 'Expiré',
   compliance_review: 'Vérification en cours',
   credited: 'Crédité',
   rejected: 'Rejeté',
   requested: 'Demandé',
   approved: 'Approuvé',
   queued: 'En file d’attente',
+  pending: 'En attente de confirmation',
   broadcast: 'Envoyé sur le réseau',
   completed: 'Terminée',
   failed: 'Échouée',
@@ -2481,6 +2484,8 @@ function CustomerFundingHistory({ type }) {
     credited: 'Crédité',
     requested: 'Demandé',
     approved: 'Approuvé',
+    pending: 'En attente de confirmation',
+    expired: 'Expiré',
     queued: 'En file de traitement',
     broadcast: 'Envoyé sur BSC',
     completed: 'Terminé',
@@ -2589,6 +2594,7 @@ function CustomerPortal() {
   });
   const [activityLoading, setActivityLoading] = useState(false);
   const [activityError, setActivityError] = useState('');
+  const [activityRefresh, setActivityRefresh] = useState(0);
   const activityRequest = useRef(false);
   const [marketSnapshot, setMarketSnapshot] = useState(null);
   const [sessions, setSessions] = useState([]);
@@ -2603,6 +2609,13 @@ function CustomerPortal() {
   const [withdrawalMessage, setWithdrawalMessage] = useState('');
   const [withdrawalError, setWithdrawalError] = useState('');
   const [withdrawalRefresh, setWithdrawalRefresh] = useState(0);
+  const [transferRecipientEmail, setTransferRecipientEmail] = useState('');
+  const [transferAmount, setTransferAmount] = useState('');
+  const [transferCode, setTransferCode] = useState('');
+  const [transferChallenge, setTransferChallenge] = useState(null);
+  const [transferBusy, setTransferBusy] = useState(false);
+  const [transferMessage, setTransferMessage] = useState('');
+  const [transferError, setTransferError] = useState('');
   const [loading, setLoading] = useState(true);
   const path = route.pathname.replace(/\/$/, '') || '/compte';
   useEffect(() => {
@@ -2677,28 +2690,33 @@ function CustomerPortal() {
   useEffect(() => {
     if (path !== '/transactions') return undefined;
     let active = true;
+    let initialLoad = true;
     setActivities([]);
     setActivityPagination({ hasMore: false, nextCursor: null });
-    setActivityLoading(true);
-    setActivityError('');
-    api(`/api/account/funding-activity?type=${encodeURIComponent(activityFilter)}`)
-      .then((result) => {
+    const refresh = async () => {
+      if (initialLoad) setActivityLoading(true);
+      setActivityError('');
+      try {
+        const result = await api(`/api/account/funding-activity?type=${encodeURIComponent(activityFilter)}`);
         if (!active) return;
         setActivities(result.activities || []);
         setActivityPagination(result.pagination || { hasMore: false, nextCursor: null });
-      })
-      .catch((error) => {
+      } catch (error) {
         if (!active) return;
         if (error.status === 401) navigate('/connexion', { replace: true });
         else setActivityError(error.message);
-      })
-      .finally(() => {
-        if (active) setActivityLoading(false);
-      });
+      } finally {
+        if (active && initialLoad) setActivityLoading(false);
+        initialLoad = false;
+      }
+    };
+    void refresh();
+    const interval = window.setInterval(refresh, 15000);
     return () => {
       active = false;
+      window.clearInterval(interval);
     };
-  }, [path, activityFilter, navigate]);
+  }, [path, activityFilter, activityRefresh, navigate]);
   useEffect(() => {
     if (path !== '/securite') return undefined;
     let active = true;
@@ -2770,6 +2788,56 @@ function CustomerPortal() {
       setWithdrawalBusy(false);
     }
   }
+  async function requestCustomerTransfer(event) {
+    event.preventDefault();
+    setTransferBusy(true);
+    setTransferError('');
+    setTransferMessage('');
+    try {
+      const result = await api('/api/account/transfers/challenge', {
+        method: 'POST',
+        body: JSON.stringify({
+          recipientEmail: transferRecipientEmail,
+          amount: transferAmount,
+        }),
+      });
+      setTransferChallenge(result.transfer);
+      setTransferCode('');
+      setTransferMessage(`Code de confirmation envoyé à ${customer.email}.`);
+    } catch (error) {
+      setTransferError(error.message);
+    } finally {
+      setTransferBusy(false);
+    }
+  }
+  async function confirmCustomerTransfer(event) {
+    event.preventDefault();
+    if (!transferChallenge?.challengeId) return;
+    setTransferBusy(true);
+    setTransferError('');
+    setTransferMessage('');
+    try {
+      const result = await api('/api/account/transfers/confirm', {
+        method: 'POST',
+        body: JSON.stringify({
+          challengeId: transferChallenge.challengeId,
+          code: transferCode,
+        }),
+      });
+      setTransferMessage(
+        `Envoi terminé : ${result.transfer.recipientAmount} USDT reçus par ${result.transfer.recipientEmail}. Frais : ${result.transfer.fee} USDT.`,
+      );
+      setTransferRecipientEmail('');
+      setTransferAmount('');
+      setTransferCode('');
+      setTransferChallenge(null);
+      setActivityRefresh((version) => version + 1);
+    } catch (error) {
+      setTransferError(error.message);
+    } finally {
+      setTransferBusy(false);
+    }
+  }
   async function loadMoreOrders() {
     if (
       orderHistoryRequest.current ||
@@ -2818,6 +2886,7 @@ function CustomerPortal() {
     ['/profil', 'Mon profil', '○'],
     ['/portefeuille', 'Portefeuille', '◈'],
     ['/transactions', 'Transactions', '⇄'],
+    ['/envoyer', 'Envoyer', '↗'],
     ['/depot', 'Dépôt', '↓'],
     ['/retrait', 'Retrait', '↑'],
     ['/staking', 'Staking', '◇'],
@@ -2839,6 +2908,7 @@ function CustomerPortal() {
     '/profil': 'Mon profil',
     '/portefeuille': 'Mon portefeuille',
     '/transactions': 'Mes transactions',
+    '/envoyer': 'Envoyer des USDT',
     '/depot': 'Déposer des actifs',
     '/retrait': 'Retirer des actifs',
     '/staking': 'Staking',
@@ -3204,19 +3274,106 @@ function CustomerPortal() {
               </section>
             </>
           )}
+          {path === '/envoyer' && (
+            <section className="customer-transfer-panel">
+              <div className="customer-order-history-heading">
+                <div>
+                  <span className="eyebrow plain">TRANSFERT ENTRE MEMBRES</span>
+                  <h2>Envoyer des USDT</h2>
+                </div>
+              </div>
+              <p>
+                Saisis l’e-mail du compte DAE destinataire. Le montant sera débité de ton solde USDT
+                BEP20; des frais de 0,05 % seront déduits de ce montant. L’envoi nécessite un code
+                de confirmation reçu par e-mail.
+              </p>
+              <Notice>{transferError}</Notice>
+              {transferMessage && <p className="customer-transfer-message" role="status">{transferMessage}</p>}
+              {!transferChallenge ? (
+                <form className="customer-transfer-form" onSubmit={requestCustomerTransfer}>
+                  <label>
+                    E-mail du destinataire
+                    <input
+                      required
+                      type="email"
+                      autoComplete="email"
+                      value={transferRecipientEmail}
+                      onChange={(event) => setTransferRecipientEmail(event.target.value)}
+                      placeholder="destinataire@exemple.com"
+                    />
+                  </label>
+                  <label>
+                    Montant débité · USDT
+                    <input
+                      required
+                      inputMode="decimal"
+                      pattern="(?:0|[1-9][0-9]*)(?:\\.[0-9]{1,18})?"
+                      value={transferAmount}
+                      onChange={(event) => setTransferAmount(event.target.value)}
+                      placeholder="1.00"
+                    />
+                  </label>
+                  <p>Minimum : 1 USDT. Les frais sont 0,05 % du montant; le destinataire reçoit le montant net.</p>
+                  <button className="button button-primary" disabled={transferBusy}>
+                    {transferBusy ? 'Envoi du code…' : 'Continuer et recevoir un code'}
+                  </button>
+                </form>
+              ) : (
+                <form className="customer-transfer-form" onSubmit={confirmCustomerTransfer}>
+                  <div className="customer-transfer-summary">
+                    <span>Destinataire <strong>{transferChallenge.recipientEmail}</strong></span>
+                    <span>Débit total <strong>{transferChallenge.amount} USDT</strong></span>
+                    <span>Frais <strong>{transferChallenge.fee} USDT</strong></span>
+                    <span>Montant reçu <strong>{transferChallenge.recipientAmount} USDT</strong></span>
+                  </div>
+                  <label>
+                    Code reçu par e-mail
+                    <input
+                      required
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      pattern="[0-9]{6}"
+                      maxLength={6}
+                      value={transferCode}
+                      onChange={(event) => setTransferCode(event.target.value)}
+                      placeholder="000000"
+                    />
+                  </label>
+                  <div className="customer-transfer-actions">
+                    <button className="button button-primary" disabled={transferBusy}>
+                      {transferBusy ? 'Confirmation…' : 'Confirmer l’envoi'}
+                    </button>
+                    <button
+                      type="button"
+                      className="button button-outline"
+                      disabled={transferBusy}
+                      onClick={() => {
+                        setTransferChallenge(null);
+                        setTransferCode('');
+                        setTransferError('');
+                      }}
+                    >
+                      Annuler
+                    </button>
+                  </div>
+                  <small>Le code expire à {new Date(transferChallenge.expiresAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}.</small>
+                </form>
+              )}
+            </section>
+          )}
           {path === '/transactions' && (
             <>
               <section className="customer-transaction-actions" aria-label="Nouvelle opération">
                 <Link to="/depot" className="button button-outline">Déposer USDT</Link>
                 <Link to="/retrait" className="button button-outline">Retirer USDT</Link>
                 <Link to="/acheter?asset=USDT" className="button button-primary">Acheter USDT</Link>
-                <Link to="/envoyer" className="button button-primary">Envoyer / vendre USDT</Link>
+                <Link to="/envoyer" className="button button-primary">Envoyer USDT à un membre</Link>
               </section>
               <section className="customer-order-history customer-transactions">
                 <div className="customer-order-history-heading">
                   <div>
                     <span className="eyebrow plain">HISTORIQUE DU COMPTE</span>
-                    <h2>Dépôts, retraits, achats et ventes</h2>
+                    <h2>Dépôts, retraits, transferts, achats et ventes</h2>
                   </div>
                   <label className="transaction-filter">
                     <span>Type</span>
@@ -3228,7 +3385,8 @@ function CustomerPortal() {
                       <option value="deposit">Dépôts</option>
                       <option value="withdrawal">Retraits</option>
                       <option value="buy">Achats</option>
-                      <option value="sell">Ventes / envois</option>
+                      <option value="sell">Ventes</option>
+                      <option value="transfer">Transferts P2P</option>
                     </select>
                   </label>
                 </div>
@@ -3238,13 +3396,24 @@ function CustomerPortal() {
                     {activities.map((activity) => (
                       <article className="customer-transaction-row" key={`${activity.type}:${activity.id}`}>
                         <span className={`transaction-type-icon transaction-${activity.type}`}>
-                          {activity.type === 'deposit' ? '↓' : activity.type === 'withdrawal' ? '↑' : activity.type === 'buy' ? '+' : activity.type === 'sell' ? '↗' : '◇'}
+                        {activity.type === 'deposit' ? '↓' : activity.type === 'withdrawal' ? '↑' : activity.type === 'buy' ? '+' : activity.type === 'sell' ? '↗' : activity.type === 'transfer' ? '↔' : '◇'}
                         </span>
                         <div className="customer-transaction-main">
-                          <strong>{activityTypeNames[activity.type] || 'Opération'} · {activity.asset}</strong>
+                          <strong>
+                            {activity.transferDirection === 'fee' ? 'Commission P2P' : activityTypeNames[activity.type] || 'Opération'} · {activity.asset}
+                          </strong>
                           <small>
                             {activity.network || 'Réseau non précisé'} · {new Date(activity.createdAt).toLocaleString('fr-FR')}
                           </small>
+                          {activity.type === 'transfer' && activity.counterpartyEmail && (
+                            <small>
+                              {activity.transferDirection === 'sent'
+                                ? 'À'
+                                : activity.transferDirection === 'fee'
+                                  ? 'Commission de'
+                                  : 'De'} {activity.counterpartyEmail}
+                            </small>
+                          )}
                           {activity.reference && (
                             activity.type === 'buy' || activity.type === 'sell' ? (
                               <Link
@@ -3259,6 +3428,9 @@ function CustomerPortal() {
                           )}
                           {activity.fulfillment === 'internal_balance' && activity.status !== 'completed' && (
                             <small>Crédit du solde après confirmation effective du paiement.</small>
+                          )}
+                          {activity.feeEarned != null && activity.transferDirection !== 'fee' && (
+                            <small>Commission reçue : {formatDecimalString(activity.feeEarned)} {activity.asset}</small>
                           )}
                         </div>
                         <div className="customer-transaction-value">
@@ -5083,11 +5255,10 @@ export default function App() {
   if (path === '/connexion') return <AccountAccess initialMode="login" />;
   if (path === '/mot-de-passe-oublie') return <PasswordRecovery />;
   if (
-    ['/compte', '/profil', '/portefeuille', '/transactions', '/depot', '/retrait', '/staking', '/verification', '/securite'].includes(path)
+    ['/compte', '/profil', '/portefeuille', '/transactions', '/envoyer', '/depot', '/retrait', '/staking', '/verification', '/securite'].includes(path)
   )
     return <CustomerPortal />;
   if (path === '/acheter') return <Exchange key="buy" mode="buy" />;
-  if (path === '/envoyer') return <Exchange key="send-usdt" mode="sell" forcedAsset="USDT" forcedNetwork="BEP20" sendIntent />;
   if (path === '/vendre') return <Exchange key="sell" mode="sell" />;
   if (path === '/suivi' || path === '/attente') return <Tracking key={path} />;
   if (path === '/contact') return <Contact />;

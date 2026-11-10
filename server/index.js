@@ -13,6 +13,7 @@ const { safeRequestPath } = require('./lib/requestLog');
 const connectDB = require('./config/db');
 const { migrateLegacySellRate } = require('./services/rateMigration');
 const { migrateWalletAddressIndex } = require('./services/walletIndexMigration');
+const { drainEmailOutbox } = require('./services/emailOutbox');
 const errorHandler = require('./middleware/errorHandler');
 const SiteConfig = require('./models/SiteConfig');
 
@@ -231,6 +232,11 @@ connectDB()
   .then(async () => {
     await migrateWalletAddressIndex();
     await migrateLegacySellRate();
+    const emailOutboxTimer = setInterval(() => {
+      drainEmailOutbox().catch((error) => logger.error({ err: error }, 'Traitement de la file e-mail indisponible'));
+    }, 5000);
+    emailOutboxTimer.unref();
+    drainEmailOutbox().catch((error) => logger.error({ err: error }, 'Traitement initial de la file e-mail indisponible'));
     app.listen(PORT, () => {
       logger.info({ port: PORT, env: config.node }, `Serveur sur http://localhost:${PORT}`);
     });

@@ -1,7 +1,7 @@
 'use strict';
 
 const mongoose = require('mongoose');
-const { zeroPadValue, getAddress } = require('ethers');
+const { formatUnits, zeroPadValue, getAddress } = require('ethers');
 const connectDB = require('../config/db');
 const { config, BSC_PEG_USD_CONTRACT } = require('../config');
 const { logger } = require('../lib/logger');
@@ -17,6 +17,8 @@ const {
   TRANSFER_TOPIC,
 } = require('../services/bsc');
 const { postLedgerTransaction } = require('../services/ledger');
+const { enqueueEmail } = require('../services/emailOutbox');
+const { depositCreditedEmail } = require('../services/email');
 
 const NETWORK = 'BEP20';
 const ASSET = 'USDT'; // Product label; chain contract is Binance-Peg BSC-USD.
@@ -218,12 +220,31 @@ async function creditDeposit(deposit, customerId) {
       },
     ],
   });
-  await Deposit.updateOne(
-    { _id: deposit._id, status: { $in: ['detected', 'confirming', 'compliance_review'] } },
-    {
-      $set: { status: 'credited' },
-    },
-  );
+  const session = await mongoose.startSession();
+  try {
+    await session.withTransaction(async () => {
+      const updated = await Deposit.updateOne(
+        { _id: deposit._id, status: { $in: ['detected', 'confirming', 'compliance_review'] } },
+        { $set: { status: 'credited' } },
+        { session },
+      );
+      if (updated.modifiedCount !== 1) return;
+      const customer = await Customer.findById(customerId).select('email').session(session).lean();
+      if (!customer?.email) throw new Error('E-mail client introuvable pour notifier le dépôt crédité.');
+      await enqueueEmail({
+        dedupeKey: `deposit:${deposit._id}:credited`,
+        ...depositCreditedEmail({
+          email: customer.email,
+          amount: formatUnits(deposit.amountAtomic, deposit.decimals),
+          asset: deposit.asset,
+          network: deposit.network,
+          reference: deposit.txHash,
+        }),
+      }, { session });
+    });
+  } finally {
+    await session.endSession();
+  }
 }
 
 async function reconcilePendingDeposits(provider) {
