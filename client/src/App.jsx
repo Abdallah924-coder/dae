@@ -4133,6 +4133,7 @@ function Admin() {
   const [earnCurrentAdmin, setEarnCurrentAdmin] = useState('');
   const [earnSecondAdminConfigured, setEarnSecondAdminConfigured] = useState(false);
   const [earnProtocolStatus, setEarnProtocolStatus] = useState(null);
+  const [earnProposalSyncError, setEarnProposalSyncError] = useState('');
   const [earnReason, setEarnReason] = useState('');
   const [earnDecisionBusy, setEarnDecisionBusy] = useState('');
   const [readiness, setReadiness] = useState(null);
@@ -4220,9 +4221,28 @@ function Admin() {
       notify(e.message, true);
     }
   }, [token]);
+  const refreshEarnProposals = useCallback(async () => {
+    if (!token) return;
+    try {
+      const queue = await api('/api/admin/earn/proposals', { admin: true });
+      setEarnProposals(queue.proposals || []);
+      setEarnCurrentAdmin(queue.currentAdmin || '');
+      setEarnSecondAdminConfigured(Boolean(queue.secondAdminConfigured));
+      setEarnProposalSyncError('');
+    } catch (requestError) {
+      if (requestError.message.toLowerCase().includes('session')) logout();
+      setEarnProposalSyncError(requestError.message || 'Impossible d’actualiser les propositions.');
+    }
+  }, [token]);
   useEffect(() => {
     if (token) load();
   }, [token, load]);
+  useEffect(() => {
+    if (!token || tab !== 'earn') return undefined;
+    refreshEarnProposals();
+    const timer = setInterval(refreshEarnProposals, 10_000);
+    return () => clearInterval(timer);
+  }, [token, tab, refreshEarnProposals]);
   const loadOrders = useCallback(async () => {
     if (!token) return;
     const requestId = ++ordersRequestId.current;
@@ -5865,7 +5885,13 @@ function Admin() {
                 </button>
               </section>
               <section className="admin-card">
-                <h2>Approbation croisée</h2>
+                <div className="card-heading">
+                  <h2>Approbation croisée</h2>
+                  <button type="button" className="button button-outline compact" onClick={refreshEarnProposals}>
+                    Actualiser
+                  </button>
+                </div>
+                {earnProposalSyncError && <Notice>{earnProposalSyncError}</Notice>}
                 {earnProposals.length ? (
                   <div className="earn-admin-audit">
                     {earnProposals.map((proposal) => (
