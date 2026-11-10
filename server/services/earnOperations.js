@@ -491,6 +491,17 @@ async function applyApprovedEarnAction(action, actor, session) {
     const activeAllocation = await EarnAllocation.exists({ positionId: position._id, status: { $ne: 'closed' } }).session(session);
     if (activeAllocation) throw new Error('Le principal doit être récupéré et rapproché avant le retrait client.');
     const principal = BigInt(position.amountAtomic);
+    const treasuryCash = -BigInt(await getLedgerBalanceAtomic({
+      accountRef: 'system:earn:treasury-cash',
+      asset: 'USDT',
+      network: 'BEP20',
+    }, { session }));
+    if (treasuryCash < principal) {
+      throw Object.assign(new Error('La trésorerie disponible ne couvre pas le capital demandé; le retrait reste en attente.'), {
+        code: 'ERR_EARN_WITHDRAWAL_LIQUIDITY',
+      });
+    }
+    await assertTreasuryCash(treasuryCash.toString(), session);
     const penalty = BigInt(position.withdrawalPenaltyAtomic || '0');
     const postings = [
       { accountRef: customerLedgerAccountRef(position.customerId, 'staked'), asset: 'USDT', network: 'BEP20', decimals: 18, side: 'debit', amountAtomic: principal.toString() },
