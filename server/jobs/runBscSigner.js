@@ -130,6 +130,49 @@ async function validateSignedTransaction(job, rawTransaction, signers, token) {
   return parsed;
 }
 
+function canRequeueUnfundedGasTopUp({ job, error, transactionFound, balance, pendingNonce, parsed }) {
+  const message = String(error?.shortMessage || error?.message || '');
+  const isInsufficientFunds = error?.code === 'INSUFFICIENT_FUNDS' || /insufficient funds/i.test(message);
+  const feePerGas = parsed.maxFeePerGas ?? parsed.gasPrice;
+  if (
+    job.signedPurpose !== 'gas_topup' ||
+    transactionFound ||
+    !isInsufficientFunds ||
+    feePerGas == null ||
+    pendingNonce > parsed.nonce
+  ) return false;
+  return balance < parsed.value + parsed.gasLimit * feePerGas;
+}
+
+async function requeueUnfundedGasTopUp(job, parsed, error, signers, provider) {
+  const [balance, pendingNonce] = await Promise.all([
+    provider.getBalance(parsed.from),
+    provider.getTransactionCount(parsed.from, 'pending'),
+  ]);
+  if (!canRequeueUnfundedGasTopUp({ job, error, transactionFound: false, balance, pendingNonce, parsed })) return false;
+
+  const result = await BscTransferJob.updateOne({ _id: job._id, status: 'signed', txHash: job.txHash }, {
+    $set: { status: 'queued', errorCode: null },
+    $unset: {
+      txHash: 1,
+      signedPurpose: 1,
+      signingAddress: 1,
+      signingNonce: 1,
+      signedValueAtomic: 1,
+      signedTokenAmountAtomic: 1,
+      signedRawTransaction: 1,
+    },
+  });
+  if (result.modifiedCount !== 1) return false;
+  logger.warn({
+    jobId: String(job._id),
+    signer: signers.gas.address,
+    previousNonce: parsed.nonce,
+    balanceWei: balance.toString(),
+  }, 'Top-up BNB signé trop élevé pour le solde disponible; nouvelle signature en attente');
+  return true;
+}
+
 async function broadcastSignedTransaction(job, signers, provider, token) {
   const raw = decryptSignedTransaction(job.signedRawTransaction);
   const parsed = await validateSignedTransaction(job, raw, signers, token);
@@ -140,6 +183,7 @@ async function broadcastSignedTransaction(job, signers, provider, token) {
       await provider.broadcastTransaction(raw);
     } catch (error) {
       const transactionAfterError = await provider.getTransaction(job.txHash).catch(() => null);
+      if (!transactionAfterError && await requeueUnfundedGasTopUp(job, parsed, error, signers, provider)) return;
       if (!transactionAfterError && !/already known|known transaction/i.test(String(error.message || ''))) throw error;
     }
   }
@@ -376,4 +420,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { localSigner, processJob };
+module.exports = { canRequeueUnfundedGasTopUp, localSigner, processJob };

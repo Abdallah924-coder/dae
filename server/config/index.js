@@ -78,7 +78,7 @@ const config = {
     sweepsEnabled: process.env.BSC_SWEEPS_ENABLED === 'true',
     masterDerivationPath: process.env.BSC_MASTER_DERIVATION_PATH || "m/44'/60'/1'/0/0",
     gasDerivationPath: process.env.BSC_GAS_DERIVATION_PATH || "m/44'/60'/2'/0/0",
-    gasTopUpBnb: process.env.BSC_GAS_TOPUP_BNB || '0.003',
+    gasTopUpBnb: process.env.BSC_GAS_TOPUP_BNB || '0.0003',
     customerDerivationPath: process.env.BSC_CUSTOMER_DERIVATION_PATH || "m/44'/60'/0'/0",
     withdrawalFreshAuthMinutes: Number(process.env.BSC_WITHDRAWAL_FRESH_AUTH_MINUTES || 10),
   },
