@@ -1,0 +1,28 @@
+[Unit]
+Description=DAE BNB Smart Chain transaction signer
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=dae
+Group=dae
+WorkingDirectory=/opt/dae
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node /opt/dae/server/jobs/runBscSigner.js
+Restart=always
+RestartSec=10
+TimeoutStopSec=30
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

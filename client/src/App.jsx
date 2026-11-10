@@ -217,8 +217,8 @@ function Header() {
   return (
     <header className="site-header">
       <div className="nav-wrap">
-        <Link to="/" className="brand">
-          <img src="/images/dae-logo.png" alt="DAE Crypto" />
+        <Link to="/" className="brand transition-transform duration-300 hover:scale-[1.03]">
+          <img src="/images/dae-mark.png" alt="DAE Crypto" />
         </Link>
         <button
           className="mobile-menu"
@@ -230,6 +230,7 @@ function Header() {
         </button>
         <nav className={open ? 'nav-links open' : 'nav-links'}>
           <Link to="/#marches">Marchés</Link>
+          <Link to="/envoyer">Envoyer</Link>
           <Link to="/contact">Assistance</Link>
           <Link to="/suivi">Suivre une commande</Link>
           <Link to="/admin" className="nav-admin">
@@ -274,11 +275,11 @@ function Footer() {
 }
 function Shell({ children }) {
   return (
-    <>
+    <div className="app-shell min-h-screen bg-void text-slate-100">
       <Header />
       {children}
       <Footer />
-    </>
+    </div>
   );
 }
 function Notice({ children, type = 'error' }) {
@@ -621,6 +622,22 @@ function Home() {
     <Shell>
       <main>
         <section className="hero">
+          <div className="hero-crypto-scene" aria-hidden="true">
+            <div className="crypto-orbit crypto-orbit-one">
+              <span className="crypto-token crypto-token-btc">
+                <span className="crypto-token-face">₿</span>
+              </span>
+            </div>
+            <div className="crypto-orbit crypto-orbit-two">
+              <span className="crypto-token crypto-token-eth">
+                <span className="crypto-token-face">◆</span>
+              </span>
+            </div>
+            <span className="crypto-token crypto-token-usdt">
+              <span className="crypto-token-face">₮</span>
+            </span>
+            <span className="crypto-scene-caption">DIGITAL ASSETS · ON CHAIN</span>
+          </div>
           <div className="hero-copy">
             <div className="eyebrow">
               <i /> DAE · des échanges transparents
@@ -640,6 +657,9 @@ function Home() {
               </Link>
               <Link to="/vendre" className="button button-outline">
                 Vendre <b>↗</b>
+              </Link>
+              <Link to="/envoyer" className="button button-quiet">
+                Envoyer USDT <b>↗</b>
               </Link>
             </div>
             <div className="trust-row">
@@ -2009,7 +2029,7 @@ function AccountAccess({ initialMode = 'login' }) {
       <main className="account-access-wrap">
         <section className="account-access-card">
           <div className="account-access-brand">
-            <img src="/images/dae-logo.png" alt="DAE Crypto" />
+            <img src="/images/dae-mark.png" alt="DAE Crypto" />
             <span>PLATEFORME DAE</span>
           </div>
           <div className="account-access-heading">
@@ -2332,7 +2352,7 @@ function PasswordRecovery() {
       <main className="account-access-wrap recovery-wrap">
         <section className="account-access-card">
           <div className="account-access-brand">
-            <img src="/images/dae-logo.png" alt="DAE Crypto" />
+            <img src="/images/dae-mark.png" alt="DAE Crypto" />
             <span>RÉCUPÉRATION SÉCURISÉE</span>
           </div>
           <div className="account-access-heading">
@@ -2853,10 +2873,10 @@ function CustomerPortal() {
     return <main className="customer-loading">Chargement de ton espace sécurisé…</main>;
   }
   return (
-    <div className="customer-app">
+    <div className="customer-app min-h-screen bg-void text-slate-100">
       <aside className="customer-sidebar">
-        <Link to="/" className="customer-brand">
-          <img src="/images/dae-logo.png" alt="DAE Crypto" />
+        <Link to="/" className="customer-brand transition-transform duration-300 hover:scale-[1.03]">
+          <img src="/images/dae-mark.png" alt="DAE Crypto" />
         </Link>
         <span className="customer-menu-label">ESPACE PERSONNEL</span>
         <nav>
@@ -4020,8 +4040,8 @@ function Admin() {
   if (!token)
     return (
       <main className="admin-login">
-        <Link to="/" className="brand">
-          <img src="/images/dae-logo.png" alt="DAE Crypto" />
+        <Link to="/" className="brand transition-transform duration-300 hover:scale-[1.03]">
+          <img src="/images/dae-mark.png" alt="DAE Crypto" />
         </Link>
         <section>
           <span className="eyebrow plain">ESPACE ÉQUIPE</span>
@@ -4043,10 +4063,10 @@ function Admin() {
       </main>
     );
   return (
-    <div className="admin-app">
+    <div className="admin-app min-h-screen bg-void text-slate-100">
       <aside className="admin-sidebar">
         <Link to="/" className="brand">
-          <img src="/images/dae-logo.png" alt="DAE Crypto" />
+          <img src="/images/dae-mark.png" alt="DAE Crypto" />
         </Link>
         <div className="admin-label">ESPACE DE GESTION</div>
         {[
