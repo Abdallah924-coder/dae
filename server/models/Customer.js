@@ -29,9 +29,7 @@ const customerSchema = new mongoose.Schema(
     passwordHash: { type: String, required: true, select: false },
     passwordSalt: { type: String, required: true, select: false },
     emailVerifiedAt: { type: Date, default: null },
-    phoneVerifiedAt: { type: Date, default: null },
     emailChallenge: { type: challengeSchema, default: () => ({}) },
-    phoneChallenge: { type: challengeSchema, default: () => ({}) },
     status: {
       type: String,
       enum: ['pending_verification', 'active', 'locked', 'closed'],

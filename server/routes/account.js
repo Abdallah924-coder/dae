@@ -66,10 +66,6 @@ const challengeSelect = [
   '+emailChallenge.expiresAt',
   '+emailChallenge.sentAt',
   '+emailChallenge.attempts',
-  '+phoneChallenge.hash',
-  '+phoneChallenge.expiresAt',
-  '+phoneChallenge.sentAt',
-  '+phoneChallenge.attempts',
 ].join(' ');
 
 function authEmailReady() {
@@ -100,7 +96,6 @@ function createEmailChallenge(customer) {
     sentAt: new Date(),
     attempts: 0,
   };
-  customer.phoneChallenge = {};
   return emailCode;
 }
 
@@ -390,7 +385,6 @@ router.post('/verify', authLimiter, auth.requireSameOrigin, async (req, res, nex
         $set: {
           emailVerifiedAt: now,
           emailChallenge: {},
-          phoneChallenge: {},
           status: 'active',
         },
       },

@@ -1176,9 +1176,8 @@ function Exchange({ mode, forcedAsset, forcedNetwork, sendIntent = false }) {
             <span className="eyebrow plain">COMPTE CLIENT DAE</span>
             <h1>{mode === 'buy' ? 'Connectez-vous pour acheter' : 'Connectez-vous pour vendre'}</h1>
             <p>
-              Les demandes de change sont réservées aux comptes actifs dont l’e-mail et le numéro
-              de téléphone ont été vérifiés. La connexion nécessite aussi les codes de sécurité
-              envoyés sur ces deux canaux.
+              Les demandes de change sont réservées aux comptes actifs dont l’adresse e-mail est
+              vérifiée. La connexion se confirme avec un code envoyé par e-mail.
             </p>
             <Notice>{accountError}</Notice>
             <div className="form-actions">
@@ -2050,7 +2049,7 @@ function AccountAccess({ initialMode = 'login' }) {
                   : 'Entre le code à six chiffres reçu par e-mail.'
                 : registerMode
                   ? 'Crée ton accès personnel. Tes coordonnées seront vérifiées avant toute activité du compte.'
-                  : 'Connecte-toi avec ton e-mail, puis confirme avec les codes de sécurité.'}
+                  : 'Connecte-toi avec ton e-mail, puis confirme avec le code de sécurité reçu par e-mail.'}
             </p>
           </div>
           {registerMode && !registrationReady && stage === 1 && (
