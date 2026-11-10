@@ -21,6 +21,11 @@ const HOLD_MINUTES = config.order.holdMinutes;
 const PHONE_RE = /^\+?\d{8,15}$/;
 const NETWORK_NOT_CONFIGURED = 'Les transferts sur ce réseau sont temporairement indisponibles.';
 const QUOTE_TTL_MS = 5 * 60_000;
+
+function errorMessage(error) {
+  return String(error?.message || error || 'Erreur inconnue pendant l’envoi du SMS');
+}
+
 function optionalCustomerAuth(req, res, next) {
   const token = req.headers.cookie
     ?.split(';')
@@ -505,8 +510,15 @@ router.post('/', customerAuth, customerAuthService.requireSameOrigin, async (req
       await order.save();
     } catch (error) {
       order.smsStatus = 'failed';
-      order.smsError = error.message.slice(0, 500);
-      await order.save();
+      order.smsError = errorMessage(error).slice(0, 500);
+      try {
+        await order.save();
+      } catch (saveError) {
+        logger.error(
+          { orderRefHash: hashOrderReference(order.ref), err: saveError },
+          'Impossible d’enregistrer le statut d’échec SMS',
+        );
+      }
       logger.error(
         { orderRefHash: hashOrderReference(order.ref), err: error },
         'Échec de l’envoi SMS',
