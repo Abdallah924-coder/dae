@@ -199,6 +199,15 @@ async function api(url, options = {}) {
 function Header() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
+  const navigation = [
+    ['/#marches', 'Marchés'],
+    ['/acheter', 'Acheter'],
+    ['/vendre', 'Vendre'],
+    ['/staking', 'DAE Earn'],
+    ['/envoyer', 'Envoyer'],
+    ['/suivi', 'Suivi'],
+    ['/contact', 'Assistance'],
+  ];
   const [open, setOpen] = useState(false);
   const [customer, setCustomer] = useState(null);
   const [sessionChecked, setSessionChecked] = useState(false);
@@ -240,11 +249,20 @@ function Header() {
         >
           ☰
         </button>
-        <nav className={open ? 'nav-links open' : 'nav-links'}>
-          <Link to="/#marches">Marchés</Link>
-          <Link to="/envoyer">Envoyer</Link>
-          <Link to="/contact">Assistance</Link>
-          <Link to="/suivi">Suivre une commande</Link>
+        <nav className={open ? 'nav-links open' : 'nav-links'} aria-label="Navigation principale">
+          {navigation.map(([href, label]) => {
+            const active = href.startsWith('/#') ? pathname === '/' : pathname === href;
+            return (
+              <Link
+                key={href}
+                to={href}
+                className={active ? 'nav-item active' : 'nav-item'}
+                aria-current={active ? 'page' : undefined}
+              >
+                {label}
+              </Link>
+            );
+          })}
           <Link to="/admin" className="nav-admin">
             Espace équipe
           </Link>
@@ -2731,6 +2749,10 @@ function CustomerAvatar({ customer, large = false }) {
     'M12 12C25 30 44 46 68 60M8 31C28 20 49 20 72 30',
     'M10 54C22 34 37 24 64 12M18 68C35 48 52 41 74 39',
     'M8 19C28 36 45 45 72 49M10 63C29 45 45 30 67 12',
+    'M10 40C10 22 24 10 40 10S70 22 70 40 56 70 40 70 10 58 10 40ZM25 40C25 31 31 25 40 25S55 31 55 40 49 55 40 55 25 49 25 40Z',
+    'M12 18L40 8L68 18L74 44L54 68L25 66L7 43Z',
+    'M12 52C24 56 28 24 40 28S56 58 68 52M12 34C24 38 28 10 40 14S56 40 68 34',
+    'M14 66C18 50 28 36 40 34S62 42 68 16M14 16C25 25 31 34 40 34S57 29 68 66',
   ];
   const initials = `${customer.firstName?.[0] || ''}${customer.lastName?.[0] || ''}`.toUpperCase();
   const gradientId = `avatar-gradient-${identity.replace(/[^a-z\d]/gi, '')}-${large ? 'large' : 'small'}`;
