@@ -2,7 +2,8 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { canRequeueUnfundedGasTopUp } = require('./runBscSigner');
+const { Interface } = require('ethers');
+const { canRequeueUnfundedGasTopUp, matchesTokenTransfer } = require('./runBscSigner');
 
 const job = { signedPurpose: 'gas_topup' };
 const parsed = {
@@ -48,4 +49,15 @@ test('does not requeue for unrelated broadcast errors', () => {
     pendingNonce: 4,
     parsed,
   }), false);
+});
+
+test('matches signed BEP-20 transfers using the ABI amount argument', () => {
+  const iface = new Interface(['function transfer(address to, uint256 amount) returns (bool)']);
+  const destination = '0x0000000000000000000000000000000000000001';
+  const data = iface.encodeFunctionData('transfer', [destination, 2500000000000000000n]);
+  const decoded = iface.parseTransaction({ data, value: 0n });
+
+  assert.equal(matchesTokenTransfer(decoded, destination, '2500000000000000000'), true);
+  assert.equal(matchesTokenTransfer(decoded, destination, '2500000000000000001'), false);
+  assert.equal(matchesTokenTransfer(decoded, '0x0000000000000000000000000000000000000002', '2500000000000000000'), false);
 });

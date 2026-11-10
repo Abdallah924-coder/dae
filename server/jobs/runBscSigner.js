@@ -25,6 +25,12 @@ const TOKEN_ABI = [
 ];
 const DECIMALS = 18;
 
+function matchesTokenTransfer(decoded, destination, amountAtomic) {
+  return decoded?.name === 'transfer'
+    && String(decoded.args.to).toLowerCase() === destination.toLowerCase()
+    && decoded.args.amount.toString() === amountAtomic;
+}
+
 function localSigner() {
   const phrase = process.env.BSC_SIGNER_MNEMONIC || '';
   if (!phrase.trim()) throw new Error('BSC_SIGNER_MNEMONIC doit rester configuré uniquement sur la machine DAE qui exécute ce signataire.');
@@ -122,11 +128,9 @@ async function validateSignedTransaction(job, rawTransaction, signers, token) {
     throw new Error('Expéditeur ou contrat de jeton inattendu dans la transaction signée.');
   }
   const decoded = token.interface.parseTransaction({ data: parsed.data, value: parsed.value });
-  if (
-    decoded?.name !== 'transfer' ||
-    String(decoded.args.to).toLowerCase() !== job.destination.toLowerCase() ||
-    decoded.args.value.toString() !== job.signedTokenAmountAtomic
-  ) throw new Error('Destination ou montant signé différent de l’ordre en file.');
+  if (!matchesTokenTransfer(decoded, job.destination, job.signedTokenAmountAtomic)) {
+    throw new Error('Destination ou montant signé différent de l’ordre en file.');
+  }
   return parsed;
 }
 
@@ -420,4 +424,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { canRequeueUnfundedGasTopUp, localSigner, processJob };
+module.exports = { canRequeueUnfundedGasTopUp, localSigner, matchesTokenTransfer, processJob };

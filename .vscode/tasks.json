@@ -1,0 +1,27 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "DAE BSC Deposit Indexer",
+			"type": "shell",
+			"command": "node",
+			"args": [
+				"server/jobs/indexBscDeposits.js"
+			],
+			"isBackground": true,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "DAE BSC Signer",
+			"type": "shell",
+			"command": "node",
+			"args": [
+				"server/jobs/runBscSigner.js"
+			],
+			"isBackground": true,
+			"problemMatcher": [],
+			"group": "build"
+		}
+	]
+}
