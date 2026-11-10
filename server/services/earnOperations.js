@@ -226,6 +226,38 @@ async function requestEarnWithdrawal({ positionId, customerId, acceptEarlyPenalt
   }
 }
 
+async function emergencySuspendEarnAllocations({ actor, reason }) {
+  requireMongoTransactions();
+  const safeReason = actionReason(reason);
+  const session = await mongoose.startSession();
+  let suspended = false;
+  try {
+    await session.withTransaction(async () => {
+      const earnConfig = await EarnConfig.findOne({ key: 'main' }).session(session);
+      if (!earnConfig) {
+        const error = new Error('Configuration DAE Earn introuvable.');
+        error.code = 'ERR_EARN_CONFIG_NOT_FOUND';
+        throw error;
+      }
+      if (!earnConfig.allocationsEnabled) return;
+      const previousVersion = earnConfig.configVersion;
+      earnConfig.allocationsEnabled = false;
+      earnConfig.configVersion += 1;
+      earnConfig.updatedBy = actor;
+      await earnConfig.save({ session });
+      await EarnAuditLog.create([{
+        actor,
+        action: 'emergency_allocations_suspended',
+        details: { reason: safeReason, previousConfigVersion: previousVersion, configVersion: earnConfig.configVersion },
+      }], { session });
+      suspended = true;
+    });
+    return { suspended };
+  } finally {
+    await session.endSession();
+  }
+}
+
 async function proposeEarnAction({ type, actor, reason, positionId, allocationId, protocol, txHash }) {
   requireMongoTransactions();
   const safeReason = actionReason(reason);
@@ -598,6 +630,7 @@ module.exports = {
   TERMS_VERSION,
   createEarnPosition,
   decideEarnAction,
+  emergencySuspendEarnAllocations,
   proposeEarnAction,
   requestEarnWithdrawal,
 };

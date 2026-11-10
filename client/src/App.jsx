@@ -4532,6 +4532,25 @@ function Admin() {
       setEarnActionBusy('');
     }
   }
+  async function emergencySuspendEarnAllocations() {
+    if (!window.confirm('Suspendre immédiatement toute nouvelle allocation DeFi ? Cette action ne désactive pas les souscriptions ni les retraits.')) return;
+    const reason = String(window.prompt('Motif de la suspension (minimum 8 caractères) :') || '').trim();
+    if (reason.length < 8) return;
+    setEarnActionBusy('emergency_suspend');
+    try {
+      const result = await api('/api/admin/earn/emergency-suspend-allocations', {
+        method: 'POST',
+        admin: true,
+        body: JSON.stringify({ reason }),
+      });
+      notify(result.message);
+      await load();
+    } catch (suspendError) {
+      notify(suspendError.message, true);
+    } finally {
+      setEarnActionBusy('');
+    }
+  }
   async function decideEarnFinancialAction(action, decision) {
     let reason = '';
     if (decision === 'reject') {
@@ -5374,8 +5393,8 @@ function Admin() {
                   <div>
                     <h2>DAE Earn · configuration indicative</h2>
                     <p>
-                      Les réglages ci-dessous ne déclenchent aucun placement, transfert, allocation ou
-                      versement. Les APY restent des objectifs commerciaux, sans rendement garanti.
+                      DAE exécute les opérations de trésorerie hors plateforme; l’application ne détient
+                      aucune clé privée. Les APY sont indicatifs et aucune récompense n’est garantie.
                     </p>
                   </div>
                   <span className="readiness-lock">PRODUCTION · DÉSACTIVÉE</span>
@@ -5408,6 +5427,14 @@ function Admin() {
                   ))}
                 </div>
                 <div className="earn-operation-toolbar">
+                  <button
+                    type="button"
+                    className="button button-outline"
+                    disabled={earnActionBusy === 'emergency_suspend' || !earnConfig.allocationsEnabled}
+                    onClick={emergencySuspendEarnAllocations}
+                  >
+                    {earnActionBusy === 'emergency_suspend' ? 'Suspension…' : 'Suspendre immédiatement les nouvelles allocations'}
+                  </button>
                   <button
                     type="button"
                     className="button button-outline"

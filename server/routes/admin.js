@@ -37,7 +37,11 @@ const EarnAction = require('../models/EarnAction');
 const EarnAllocation = require('../models/EarnAllocation');
 const EarnAuditLog = require('../models/EarnAuditLog');
 const StakePosition = require('../models/StakePosition');
-const { proposeEarnAction, decideEarnAction } = require('../services/earnOperations');
+const {
+  proposeEarnAction,
+  decideEarnAction,
+  emergencySuspendEarnAllocations,
+} = require('../services/earnOperations');
 
 const router = express.Router();
 router.post('/auth/login', adminAuth.login);
@@ -221,6 +225,31 @@ router.get('/earn/actions', async (_req, res, next) => {
       })),
     });
   } catch (error) {
+    return next(error);
+  }
+});
+
+router.post('/earn/emergency-suspend-allocations', async (req, res, next) => {
+  if (!mongoTransactionsReady()) {
+    return res.status(503).json({ error: 'MongoDB en replica set est requis pour suspendre les allocations.' });
+  }
+  try {
+    const result = await emergencySuspendEarnAllocations({
+      actor: req.adminEmail,
+      reason: req.body?.reason,
+    });
+    return res.json({
+      suspended: result.suspended,
+      message: result.suspended ? 'Les nouvelles allocations sont suspendues.' : 'Les nouvelles allocations étaient déjà suspendues.',
+    });
+  } catch (error) {
+    if (error.code === 'ERR_EARN_TRANSACTIONS_REQUIRED') {
+      return res.status(503).json({ error: error.message, code: error.code });
+    }
+    if (error.code === 'ERR_EARN_CONFIG_NOT_FOUND') {
+      return res.status(503).json({ error: error.message, code: error.code });
+    }
+    if (error instanceof TypeError) return res.status(400).json({ error: error.message });
     return next(error);
   }
 });
