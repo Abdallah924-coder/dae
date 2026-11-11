@@ -1564,6 +1564,17 @@ body {
   }
 }
 
+.earn-tracking-page,
+.earn-catalog-page {
+  display: grid;
+  min-width: 0;
+  gap: 16px;
+}
+
+.earn-tracking-page > .earn-live-overview {
+  margin: 0;
+}
+
 .earn-live-overview {
   display: grid;
   gap: 18px;
