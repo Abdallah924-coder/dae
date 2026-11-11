@@ -217,22 +217,21 @@ async function api(url, options = {}) {
 }
 function Header() {
   const navigate = useNavigate();
-  const { pathname } = useLocation();
+  const { pathname, hash } = useLocation();
   const navigation = [
+    ['/', 'Accueil'],
     ['/#marches', 'Marchés'],
     ['/acheter', 'Acheter'],
     ['/vendre', 'Vendre'],
     ['/staking', 'DAE Earn'],
-    ['/envoyer', 'Envoyer'],
     ['/suivi', 'Suivi'],
-    ['/contact', 'Assistance'],
   ];
   const [open, setOpen] = useState(false);
   const [customer, setCustomer] = useState(null);
   const [sessionChecked, setSessionChecked] = useState(false);
   const [logoutBusy, setLogoutBusy] = useState(false);
   const [logoutError, setLogoutError] = useState('');
-  useEffect(() => setOpen(false), [pathname]);
+  useEffect(() => setOpen(false), [pathname, hash]);
   useEffect(() => {
     let active = true;
     api('/api/account/me')
@@ -269,38 +268,44 @@ function Header() {
           ☰
         </button>
         <nav className={open ? 'nav-links open' : 'nav-links'} aria-label="Navigation principale">
-          {navigation.map(([href, label]) => {
-            const active = href.startsWith('/#') ? pathname === '/' : pathname === href;
-            return (
-              <Link
-                key={href}
-                to={href}
-                className={active ? 'nav-item active' : 'nav-item'}
-                aria-current={active ? 'page' : undefined}
-              >
-                {label}
-              </Link>
-            );
-          })}
-          <Link to="/admin" className="nav-admin">
-            Espace équipe
-          </Link>
-          {customer ? (
-            <>
-              <Link to="/compte" className="button button-primary">
-                Mon compte
-              </Link>
-              <button type="button" className="nav-logout" onClick={logout} disabled={logoutBusy}>
-                {logoutBusy ? 'Déconnexion…' : 'Déconnexion'}
-              </button>
-            </>
-          ) : sessionChecked && (
-            <>
-              <Link to="/connexion" className="button button-quiet">Se connecter</Link>
-              <Link to="/inscription" className="button button-primary">Créer un compte</Link>
-            </>
-          )}
-          {logoutError && <span className="nav-session-error" role="status">{logoutError}</span>}
+          <div className="nav-primary">
+            {navigation.map(([href, label]) => {
+              const active =
+                href === '/'
+                  ? pathname === '/' && !hash
+                  : href.startsWith('/#')
+                    ? pathname === '/' && hash === href.slice(1)
+                    : pathname === href;
+              return (
+                <Link
+                  key={href}
+                  to={href}
+                  className={active ? 'nav-item active' : 'nav-item'}
+                  aria-current={active ? 'page' : undefined}
+                >
+                  {label}
+                </Link>
+              );
+            })}
+          </div>
+          <div className="nav-actions">
+            {customer ? (
+              <>
+                <Link to="/compte" className="button button-primary">
+                  Mon compte
+                </Link>
+                <button type="button" className="nav-logout" onClick={logout} disabled={logoutBusy}>
+                  {logoutBusy ? 'Déconnexion…' : 'Déconnexion'}
+                </button>
+              </>
+            ) : sessionChecked && (
+              <>
+                <Link to="/connexion" className="nav-login">Se connecter</Link>
+                <Link to="/inscription" className="button button-primary">Créer un compte</Link>
+              </>
+            )}
+            {logoutError && <span className="nav-session-error" role="status">{logoutError}</span>}
+          </div>
         </nav>
       </div>
     </header>
@@ -558,6 +563,7 @@ function Home() {
   const [marketState, setMarketState] = useState('loading');
   const [marketStale, setMarketStale] = useState(false);
   const [rates, setRates] = useState(null);
+  const [ratesState, setRatesState] = useState('loading');
   const [query, setQuery] = useState('');
   const [marketTab, setMarketTab] = useState('Tous');
   const [watchlist, setWatchlist] = useState(() => {
@@ -649,7 +655,13 @@ function Home() {
         setMarketState('unavailable');
         setMarketStale(true);
       }
-      if (ratesResult.status === 'fulfilled') setRates(ratesResult.value);
+      if (ratesResult.status === 'fulfilled') {
+        setRates(ratesResult.value);
+        setRatesState('ready');
+      } else {
+        setRates(null);
+        setRatesState('unavailable');
+      }
     };
     load();
     const t = setInterval(load, 60000);
@@ -671,63 +683,48 @@ function Home() {
     <Shell className="landing-shell">
       <main>
         <section className="hero">
-          <div className="hero-crypto-scene" aria-hidden="true">
-            <div className="crypto-orbit crypto-orbit-one">
-              <span className="crypto-token crypto-token-btc">
-                <span className="crypto-token-face">₿</span>
-              </span>
-            </div>
-            <div className="crypto-orbit crypto-orbit-two">
-              <span className="crypto-token crypto-token-eth">
-                <span className="crypto-token-face">◆</span>
-              </span>
-            </div>
-            <span className="crypto-token crypto-token-usdt">
-              <span className="crypto-token-face">₮</span>
-            </span>
-            <span className="crypto-scene-caption">DIGITAL ASSETS · ON CHAIN</span>
-          </div>
           <div className="hero-copy">
             <div className="eyebrow">
-              <i /> DAE · des échanges transparents
+              <i /> DAE CRYPTO · CONGO-BRAZZAVILLE
             </div>
             <h1>
-              Vos cryptos,
+              Achetez et vendez
               <br />
-              <span>en toute confiance.</span>
+              <span>en toute clarté.</span>
             </h1>
             <p>
-              Achetez et vendez vos actifs numériques au Congo. Consultez la cotation avant de
-              créer un ordre, puis suivez son traitement par l’équipe DAE.
+              Consultez le taux avant de créer votre ordre, suivez son traitement et retrouvez vos
+              soldes dans un portefeuille DAE alimenté par les écritures réelles de votre compte.
             </p>
             <div className="hero-actions">
               <Link to="/acheter" className="button button-primary">
-                Acheter <b>↗</b>
+                Acheter des USDT <b>↗</b>
               </Link>
               <Link to="/vendre" className="button button-outline">
-                Vendre <b>↗</b>
-              </Link>
-              <Link to="/envoyer" className="button button-quiet">
-                Envoyer USDT <b>↗</b>
+                Vendre des cryptos <b>↗</b>
               </Link>
             </div>
             <div className="trust-row">
               <span>
-                <b>01</b> Tarifs connus avant validation
+                <b>01</b> Taux affiché avant confirmation
               </span>
               <span>
-                <b>02</b> Suivi avec référence unique
+                <b>02</b> Suivi par référence de commande
               </span>
             </div>
           </div>
           <div className="hero-card">
             <div className="card-top">
               <div>
-                <span className="muted-light">TAUX DE CONVERSION · XAF</span>
-                <h2>Un prix clair. Dès le départ.</h2>
+                <span className="muted-light">COTATION DAE · XAF / USDT</span>
+                <h2>Le taux, avant votre ordre.</h2>
               </div>
               <span className="live-pill">
-                <i /> TARIF ACTUEL
+                <i /> {ratesState === 'ready'
+                  ? 'DISPONIBLE'
+                  : ratesState === 'loading'
+                    ? 'CHARGEMENT'
+                    : 'INDISPONIBLE'}
               </span>
             </div>
             <div className="rate-pair">
@@ -743,9 +740,9 @@ function Home() {
               </div>
             </div>
             <div className="hero-card-foot">
-              <span>Le taux appliqué est confirmé avant votre commande.</span>
-              <Link to="/suivi">
-                Suivre une transaction <b>→</b>
+              <span>Le montant final est confirmé sur la page de cotation.</span>
+              <Link to="/acheter">
+                Voir le taux d’achat <b>→</b>
               </Link>
             </div>
           </div>
@@ -756,8 +753,10 @@ function Home() {
             <span>
               {marketState === 'loading' && !updated
                 ? 'Chargement des cotations…'
-                : marketStale || marketState === 'unavailable'
+                : marketStale && updated
                   ? `Données en cache · ${updated}`
+                  : marketState === 'unavailable'
+                    ? 'Cours indisponibles'
                   : updated
                     ? `Mis à jour · ${updated}`
                     : 'Cours indisponibles'}
@@ -3706,23 +3705,23 @@ function CustomerPortal() {
             <>
               <Link to="/compte" className="customer-nav active" aria-current="page">
                 <span aria-hidden="true">⌂</span>
-                Home
+                Accueil
               </Link>
               <Link to="/#marches" className="customer-nav">
                 <span aria-hidden="true">◉</span>
-                Discovery
+                Marchés
               </Link>
               <Link to="/acheter" className="customer-nav customer-home-trade">
                 <span aria-hidden="true">⇄</span>
-                Buy
+                Acheter
               </Link>
               <Link to="/envoyer" className="customer-nav">
                 <span aria-hidden="true">↔</span>
-                P2P
+                Envoyer
               </Link>
               <Link to="/profil" className="customer-nav">
                 <span aria-hidden="true">●</span>
-                Account
+                Profil
               </Link>
             </>
           ) : (
@@ -3796,9 +3795,9 @@ function CustomerPortal() {
                 <span />
               </button>
               <nav className="customer-home-product-tabs" aria-label="Produits DAE">
-                <Link to="/#marches" className="active" aria-current="page">Exchange</Link>
+                <Link to="/#marches" className="active" aria-current="page">Échange</Link>
                 <Link to="/staking">DAE Earn</Link>
-                <Link to="/portefeuille">Wallet</Link>
+                <Link to="/portefeuille">Portefeuille</Link>
               </nav>
               <Link
                 to="/transactions"
@@ -3845,7 +3844,7 @@ function CustomerPortal() {
               <div className="customer-home-shell">
                 <section className="customer-wallet-hero" aria-label="Solde réel du portefeuille">
                   <div className="customer-wallet-value">
-                    <span className="customer-wallet-value-label">Portfolio value</span>
+                    <span className="customer-wallet-value-label">Valeur estimée du portefeuille</span>
                     <strong aria-live="polite">
                       {balancesError
                         ? '—'
@@ -3853,7 +3852,7 @@ function CustomerPortal() {
                           ? '…'
                           : portfolioValueUsd === null
                             ? '—'
-                            : new Intl.NumberFormat('en-US', {
+                            : new Intl.NumberFormat('fr-FR', {
                                 style: 'currency',
                                 currency: 'USD',
                                 maximumFractionDigits: 2,
@@ -3861,17 +3860,17 @@ function CustomerPortal() {
                     </strong>
                     <span className="customer-wallet-source">
                       {balancesError
-                        ? 'Balance temporarily unavailable'
+                        ? 'Solde temporairement indisponible'
                         : portfolioValueUsd === null && !balancesLoading
-                          ? 'Market valuation unavailable'
+                          ? 'Valorisation du marché indisponible'
                           : marketSnapshot?.stale
-                            ? 'Estimated from your DAE ledger balance and cached prices'
-                            : 'Estimated from your DAE ledger balance and current prices'}
+                            ? 'Estimation basée sur votre solde DAE et des cours en cache'
+                            : 'Estimation basée sur votre solde DAE et les cours actuels'}
                     </span>
                   </div>
                   <div className="customer-wallet-breakdown">
                     <div>
-                      <span>Available · USDT</span>
+                      <span>Disponible · USDT</span>
                       <strong>
                         {balancesError || balancesLoading
                           ? '—'
@@ -3880,7 +3879,7 @@ function CustomerPortal() {
                       </strong>
                     </div>
                     <div>
-                      <span>Reserved · USDT</span>
+                      <span>Réservé · USDT</span>
                       <strong>
                         {balancesError || balancesLoading
                           ? '—'
@@ -3889,7 +3888,7 @@ function CustomerPortal() {
                       </strong>
                     </div>
                     <div>
-                      <span>Staked · USDT</span>
+                      <span>Placé · USDT</span>
                       <strong>
                         {balancesError || balancesLoading
                           ? '—'
@@ -3902,18 +3901,18 @@ function CustomerPortal() {
                   {balancesError && <p className="customer-wallet-error">{balancesError}</p>}
                   <div className="customer-wallet-actions">
                     <Link to="/depot">
-                      Deposit Crypto
+                      Déposer des USDT
                     </Link>
                     <Link to="/envoyer" className="primary">
-                      P2P Trading
+                      Envoyer des USDT
                     </Link>
                   </div>
                 </section>
                 <section className="customer-market-overview customer-home-markets">
                   <div className="customer-market-heading">
                     <div>
-                      <span className="eyebrow plain">MARKETS</span>
-                      <h2>Discover assets</h2>
+                      <span className="eyebrow plain">MARCHÉS</span>
+                      <h2>Explorer les actifs</h2>
                     </div>
                     <span
                       className={
@@ -3922,17 +3921,17 @@ function CustomerPortal() {
                     >
                       <i />
                       {marketSnapshot?.updatedAt
-                        ? `${marketSnapshot.stale ? 'Cached · ' : ''}${new Date(marketSnapshot.updatedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`
+                        ? `${marketSnapshot.stale ? 'En cache · ' : ''}${new Date(marketSnapshot.updatedAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`
                         : marketSnapshot?.error
-                          ? 'Prices unavailable'
-                          : 'Loading prices…'}
+                          ? 'Cours indisponibles'
+                          : 'Chargement des cours…'}
                     </span>
                   </div>
-                  <div className="customer-market-tabs" role="group" aria-label="Filter markets">
+                  <div className="customer-market-tabs" role="group" aria-label="Filtrer les marchés">
                     {[
-                      ['watchlist', 'Watchlist'],
-                      ['markets', 'Top'],
-                      ['gainers', 'Gainers'],
+                      ['watchlist', 'Favoris'],
+                      ['markets', 'Marchés'],
+                      ['gainers', 'En hausse'],
                     ].map(([tab, label]) => (
                       <button
                         type="button"
@@ -3945,7 +3944,7 @@ function CustomerPortal() {
                         {label}
                       </button>
                     ))}
-                    <Link to="/#marches" className="customer-market-add" aria-label="Explore all markets">
+                    <Link to="/#marches" className="customer-market-add" aria-label="Explorer tous les marchés">
                       +
                     </Link>
                   </div>
@@ -3959,7 +3958,7 @@ function CustomerPortal() {
                       {displayedDashboardMarkets.map((market) => {
                         const change = Number(market.change24h);
                         const price = Number(market.priceUsd);
-                        const formattedPrice = new Intl.NumberFormat('en-US', {
+                        const formattedPrice = new Intl.NumberFormat('fr-FR', {
                           style: 'currency',
                           currency: 'USD',
                           maximumFractionDigits: price >= 1 ? 2 : 6,
@@ -4009,20 +4008,20 @@ function CustomerPortal() {
                     <p className="customer-market-empty">
                       {dashboardMarketTab === 'watchlist'
                         ? dashboardWatchlistLoading
-                          ? 'Loading your watchlist…'
-                          : 'Your watchlist is empty. Select the star next to an asset to add it.'
-                        : 'No assets match this filter right now.'}
+                            ? 'Chargement de vos favoris…'
+                            : 'Votre liste de favoris est vide. Utilisez l’étoile pour ajouter un actif.'
+                          : 'Aucun actif ne correspond à ce filtre pour le moment.'}
                     </p>
                   ) : (
                     <p className="customer-market-empty">
-                      {marketSnapshot?.error || 'Reference prices will appear here when available.'}
+                        {marketSnapshot?.error || 'Les cours de référence apparaîtront ici lorsqu’ils seront disponibles.'}
                     </p>
                   )}
                   <small className="customer-market-disclaimer">
                     {marketSnapshot?.updatedAt
-                      ? `Indicative USD prices · Updated ${new Date(marketSnapshot.updatedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}. `
-                      : 'Indicative USD prices. '}
-                    Your DAE conversion rate is confirmed before each order.
+                      ? `Cours indicatifs en USD · Mis à jour à ${new Date(marketSnapshot.updatedAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}. `
+                      : 'Cours indicatifs en USD. '}
+                    Votre taux de conversion DAE est confirmé avant chaque ordre.
                   </small>
                 </section>
               </div>
