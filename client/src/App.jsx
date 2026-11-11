@@ -3794,7 +3794,11 @@ function CustomerPortal() {
                 <span />
                 <span />
               </button>
-              <Link to="/compte" className="customer-home-brand" aria-label="DAE, aperçu du compte">
+              <Link
+                to="/compte"
+                className="customer-home-brand"
+                aria-label="DAE, aperçu du compte"
+              >
                 <img src="/images/dae-mark.png" alt="DAE" />
               </Link>
               <nav className="customer-home-product-tabs" aria-label="Produits DAE">
@@ -3814,7 +3818,11 @@ function CustomerPortal() {
             </div>
           ) : (
             <>
-              <Link to="/compte" className="customer-topbar-brand" aria-label="DAE, aperçu du compte">
+              <Link
+                to="/compte"
+                className="customer-topbar-brand"
+                aria-label="DAE, aperçu du compte"
+              >
                 <img src="/images/dae-mark.png" alt="DAE" />
               </Link>
               <div>

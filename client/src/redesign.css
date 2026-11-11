@@ -3938,8 +3938,7 @@ body {
   --dae-mint: #70e2bd;
   color: #eaf1f5 !important;
   background:
-    radial-gradient(ellipse at 48% -14%, rgba(32, 82, 70, 0.18), transparent 40rem),
-    #070b10 !important;
+    radial-gradient(ellipse at 48% -14%, rgba(32, 82, 70, 0.18), transparent 40rem), #070b10 !important;
 }
 
 .landing-shell .site-header {
@@ -4321,8 +4320,7 @@ body {
   position: sticky;
   top: 88px;
   background:
-    radial-gradient(ellipse at 100% 0%, rgba(239, 133, 0, 0.08), transparent 44%),
-    #fff !important;
+    radial-gradient(ellipse at 100% 0%, rgba(239, 133, 0, 0.08), transparent 44%), #fff !important;
 }
 
 .customer-action-aside > .eyebrow {
