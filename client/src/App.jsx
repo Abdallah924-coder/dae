@@ -257,7 +257,7 @@ function Header() {
     <header className="site-header">
       <div className="nav-wrap">
         <Link to="/" className="brand transition-transform duration-300 hover:scale-[1.03]">
-          <img src="/images/dae-logo.png" alt="DAE Crypto" />
+          <img src="/images/dae-mark.png" alt="DAE" />
         </Link>
         <button
           className="mobile-menu"
@@ -2113,7 +2113,7 @@ function AccountAccess({ initialMode = 'login' }) {
       <main className="account-access-wrap">
         <section className="account-access-card">
           <div className="account-access-brand">
-            <img src="/images/dae-logo.png" alt="DAE Crypto" />
+            <img src="/images/dae-mark.png" alt="DAE" />
             <span>PLATEFORME DAE</span>
           </div>
           <div className="account-access-heading">
@@ -2422,7 +2422,7 @@ function PasswordRecovery() {
       <main className="account-access-wrap recovery-wrap">
         <section className="account-access-card">
           <div className="account-access-brand">
-            <img src="/images/dae-logo.png" alt="DAE Crypto" />
+            <img src="/images/dae-mark.png" alt="DAE" />
             <span>RÉCUPÉRATION SÉCURISÉE</span>
           </div>
           <div className="account-access-heading">
@@ -3621,7 +3621,7 @@ function CustomerPortal() {
     setMobileMoreOpen(false);
   }, [route.pathname]);
   const titles = {
-    '/compte': 'Wallet DAE',
+    '/compte': 'Aperçu',
     '/profil': 'Mon profil',
     '/portefeuille': 'Mon portefeuille',
     '/transactions': 'Mes transactions',
@@ -3682,7 +3682,7 @@ function CustomerPortal() {
     <div className="customer-app min-h-screen bg-void text-slate-100">
       <aside className={`customer-sidebar${path === '/compte' ? ' customer-sidebar-home' : ''}`}>
         <Link to="/" className="customer-brand transition-transform duration-300 hover:scale-[1.03]">
-          <img src="/images/dae-logo.png" alt="DAE Crypto" />
+          <img src="/images/dae-mark.png" alt="DAE" />
         </Link>
         <span className="customer-menu-label">ESPACE PERSONNEL</span>
         <nav>
@@ -3794,6 +3794,9 @@ function CustomerPortal() {
                 <span />
                 <span />
               </button>
+              <Link to="/compte" className="customer-home-brand" aria-label="DAE, aperçu du compte">
+                <img src="/images/dae-mark.png" alt="DAE" />
+              </Link>
               <nav className="customer-home-product-tabs" aria-label="Produits DAE">
                 <Link to="/#marches" className="active" aria-current="page">Échange</Link>
                 <Link to="/staking">DAE Earn</Link>
@@ -3811,6 +3814,9 @@ function CustomerPortal() {
             </div>
           ) : (
             <>
+              <Link to="/compte" className="customer-topbar-brand" aria-label="DAE, aperçu du compte">
+                <img src="/images/dae-mark.png" alt="DAE" />
+              </Link>
               <div>
                 <span>DAE</span>
                 <i>/</i>
@@ -3897,7 +3903,6 @@ function CustomerPortal() {
                       </strong>
                     </div>
                   </div>
-                  <div className="customer-wallet-spacer" aria-hidden="true" />
                   {balancesError && <p className="customer-wallet-error">{balancesError}</p>}
                   <div className="customer-wallet-actions">
                     <Link to="/depot">
@@ -5317,7 +5322,7 @@ function Admin() {
     return (
       <main className="admin-login">
         <Link to="/" className="brand transition-transform duration-300 hover:scale-[1.03]">
-          <img src="/images/dae-logo.png" alt="DAE Crypto" />
+          <img src="/images/dae-mark.png" alt="DAE" />
         </Link>
         <section>
           <span className="eyebrow plain">ESPACE ÉQUIPE</span>
@@ -5351,7 +5356,7 @@ function Admin() {
     <div className="admin-app min-h-screen bg-void text-slate-100">
       <aside className="admin-sidebar">
         <Link to="/" className="brand">
-          <img src="/images/dae-logo.png" alt="DAE Crypto" />
+          <img src="/images/dae-mark.png" alt="DAE" />
         </Link>
         <div className="admin-label">ESPACE DE GESTION</div>
         {[
@@ -5386,6 +5391,9 @@ function Admin() {
       </aside>
       <main className="admin-main">
         <div className="admin-topbar">
+          <Link to="/" className="admin-topbar-brand" aria-label="DAE, accueil">
+            <img src="/images/dae-mark.png" alt="DAE" />
+          </Link>
           <span>
             Administration <b>/</b>{' '}
             {

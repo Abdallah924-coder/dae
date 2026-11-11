@@ -5305,3 +5305,834 @@ body {
     gap: 9px;
   }
 }
+
+.app-shell .brand img,
+.account-access-brand img,
+.customer-brand img,
+.admin-sidebar .brand img,
+.admin-login > .brand img,
+.customer-home-brand img,
+.customer-topbar-brand img,
+.admin-topbar-brand img {
+  display: block;
+  width: 42px !important;
+  min-width: 42px;
+  height: 42px !important;
+  max-height: 42px !important;
+  padding: 0 !important;
+  border: 1px solid #e1e9e3 !important;
+  border-radius: 50% !important;
+  background: #fff !important;
+  box-shadow: none !important;
+  object-fit: cover;
+}
+
+.account-access-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.app-shell:not(.landing-shell) {
+  color-scheme: light;
+  --dae-bg: #f5f7f5;
+  --dae-panel: #fff;
+  --dae-panel-raised: #f8faf8;
+  --dae-panel-soft: #edf5ef;
+  --dae-line: #e4ebe6;
+  --dae-line-strong: #d3ded7;
+  --dae-text: #183129;
+  --dae-muted: #697a73;
+  --dae-dim: #87958f;
+  --dae-lime: #17684f;
+  --dae-mint: #d3a83b;
+  color: #183129 !important;
+  background: #f6f8f6 !important;
+}
+
+.app-shell:not(.landing-shell) .site-header {
+  border-color: #e5ebe7 !important;
+  background: rgba(255, 255, 255, 0.96) !important;
+  box-shadow: 0 3px 14px rgba(22, 51, 40, 0.04) !important;
+}
+
+.app-shell:not(.landing-shell) .nav-links {
+  color: #52665d !important;
+}
+
+.app-shell:not(.landing-shell) .nav-primary {
+  border-color: #e8eee9;
+  background: #f5f8f5;
+}
+
+.app-shell:not(.landing-shell) .nav-primary .nav-item,
+.app-shell:not(.landing-shell) .nav-login,
+.app-shell:not(.landing-shell) .nav-logout {
+  color: #53675e !important;
+}
+
+.app-shell:not(.landing-shell) .nav-primary .nav-item.active {
+  color: #154e3c !important;
+  background: #fff !important;
+}
+
+.app-shell:not(.landing-shell) .nav-primary .nav-item:hover,
+.app-shell:not(.landing-shell) .nav-login:hover,
+.app-shell:not(.landing-shell) .nav-logout:hover {
+  color: #17684f !important;
+}
+
+.app-shell:not(.landing-shell) .button-primary,
+.app-shell:not(.landing-shell) .nav-links .button-primary {
+  border-color: #17684f !important;
+  color: #fff !important;
+  background: #17684f !important;
+  box-shadow: 0 5px 14px rgba(23, 104, 79, 0.14) !important;
+}
+
+.app-shell:not(.landing-shell) .button-primary:hover:not(:disabled),
+.app-shell:not(.landing-shell) .nav-links .button-primary:hover:not(:disabled) {
+  border-color: #0e513d !important;
+  background: #0e513d !important;
+}
+
+.app-shell:not(.landing-shell) .button-outline,
+.app-shell:not(.landing-shell) .button-quiet {
+  border-color: #dce6df !important;
+  color: #315746 !important;
+  background: #fff !important;
+}
+
+.app-shell:not(.landing-shell) .button-outline:hover:not(:disabled),
+.app-shell:not(.landing-shell) .button-quiet:hover:not(:disabled) {
+  border-color: #b7d2c2 !important;
+  color: #15583f !important;
+  background: #eff6f0 !important;
+}
+
+.app-shell:not(.landing-shell) .exchange-panel,
+.app-shell:not(.landing-shell) .tracking-card,
+.app-shell:not(.landing-shell) .exchange-aside,
+.app-shell:not(.landing-shell) .contact-layout > div,
+.app-shell:not(.landing-shell) .contact-layout form,
+.app-shell:not(.landing-shell) .account-access-card,
+.app-shell:not(.landing-shell) .account-access-aside {
+  border-color: #e3ebe5 !important;
+  color: #183129 !important;
+  background: #fff !important;
+  box-shadow: 0 8px 24px rgba(22, 51, 40, 0.055) !important;
+}
+
+.app-shell:not(.landing-shell) .exchange-panel h2,
+.app-shell:not(.landing-shell) .tracking-card h1,
+.app-shell:not(.landing-shell) .tracking-card h2,
+.app-shell:not(.landing-shell) .exchange-aside h2,
+.app-shell:not(.landing-shell) .contact-layout h2,
+.app-shell:not(.landing-shell) .account-access-card h1,
+.app-shell:not(.landing-shell) .page-intro h1,
+.app-shell:not(.landing-shell) .page-intro h2 {
+  color: #183129 !important;
+}
+
+.app-shell:not(.landing-shell) .exchange-aside,
+.app-shell:not(.landing-shell) .page-intro p,
+.app-shell:not(.landing-shell) .tracking-card > p,
+.app-shell:not(.landing-shell) .contact-layout p,
+.app-shell:not(.landing-shell) .account-access-heading p,
+.app-shell:not(.landing-shell) .field-label,
+.app-shell:not(.landing-shell) .field-label small,
+.app-shell:not(.landing-shell) .step,
+.app-shell:not(.landing-shell) .aside-note {
+  color: #697a73 !important;
+}
+
+.app-shell:not(.landing-shell) input,
+.app-shell:not(.landing-shell) select,
+.app-shell:not(.landing-shell) textarea,
+.app-shell:not(.landing-shell) .field-label input,
+.app-shell:not(.landing-shell) .field-label select,
+.app-shell:not(.landing-shell) .field-label textarea,
+.app-shell:not(.landing-shell) .filters input,
+.app-shell:not(.landing-shell) .filters select,
+.app-shell:not(.landing-shell) .network-row input {
+  border-color: #dce6df !important;
+  color: #183129 !important;
+  background: #fff !important;
+}
+
+.app-shell:not(.landing-shell) input:focus,
+.app-shell:not(.landing-shell) select:focus,
+.app-shell:not(.landing-shell) textarea:focus {
+  border-color: #73ad8b !important;
+  box-shadow: 0 0 0 3px rgba(23, 104, 79, 0.1) !important;
+  outline: 0;
+}
+
+.app-shell:not(.landing-shell) input::placeholder,
+.app-shell:not(.landing-shell) textarea::placeholder {
+  color: #97a39c !important;
+}
+
+.app-shell:not(.landing-shell) .stepper,
+.app-shell:not(.landing-shell) .quote-box,
+.app-shell:not(.landing-shell) .review-box,
+.app-shell:not(.landing-shell) .payment-instructions,
+.app-shell:not(.landing-shell) .account-gate,
+.app-shell:not(.landing-shell) .address {
+  border-color: #e3ebe5 !important;
+  color: #52665d !important;
+  background: #f7faf7 !important;
+}
+
+.app-shell:not(.landing-shell) .step.active span,
+.app-shell:not(.landing-shell) .step.done span {
+  color: #fff !important;
+  background: #17684f !important;
+}
+
+.app-shell:not(.landing-shell) .footer {
+  border-color: #e5ebe7 !important;
+  background: #fff !important;
+}
+
+.app-shell:not(.landing-shell) .footer-inner,
+.app-shell:not(.landing-shell) .footer a {
+  color: #687a71 !important;
+}
+
+.app-shell:not(.landing-shell) .footer a:hover {
+  color: #17684f !important;
+}
+
+.customer-app,
+.admin-app {
+  color-scheme: light;
+  --dae-bg: #f5f7f5;
+  --dae-panel: #fff;
+  --dae-panel-raised: #f8faf8;
+  --dae-panel-soft: #edf5ef;
+  --dae-line: #e4ebe6;
+  --dae-line-strong: #d3ded7;
+  --dae-text: #183129;
+  --dae-muted: #697a73;
+  --dae-dim: #87958f;
+  --dae-lime: #17684f;
+  --dae-mint: #d3a83b;
+  color: #183129 !important;
+  background: #f6f8f6 !important;
+}
+
+.customer-app .customer-sidebar,
+.admin-app .admin-sidebar {
+  border-color: #e3ebe5 !important;
+  color: #52665d !important;
+  background: #fff !important;
+  box-shadow: 4px 0 20px rgba(22, 51, 40, 0.045) !important;
+  backdrop-filter: none;
+}
+
+.customer-app .customer-main,
+.customer-app .customer-content,
+.admin-app .admin-main,
+.admin-app .admin-content {
+  color: #183129 !important;
+  background: #f6f8f6 !important;
+}
+
+.customer-app .customer-topbar,
+.admin-app .admin-topbar {
+  border-color: #e5ebe7 !important;
+  color: #52665d !important;
+  background: rgba(255, 255, 255, 0.96) !important;
+  box-shadow: 0 3px 14px rgba(22, 51, 40, 0.035) !important;
+  backdrop-filter: blur(14px);
+}
+
+.customer-app .customer-page-heading h1,
+.admin-app .admin-title h1,
+.customer-app h2,
+.customer-app h3,
+.admin-app h2,
+.admin-app h3 {
+  color: #183129 !important;
+}
+
+.customer-app .customer-page-heading .eyebrow,
+.customer-app .customer-menu-label,
+.admin-app .admin-label,
+.admin-app .admin-title .eyebrow {
+  color: #73877c !important;
+}
+
+.customer-app .customer-nav,
+.admin-app .admin-nav {
+  border-color: transparent !important;
+  color: #52665d !important;
+}
+
+.customer-app .customer-nav:hover,
+.admin-app .admin-nav:hover {
+  border-color: #e3ebe5 !important;
+  color: #15583f !important;
+  background: #f5f8f5 !important;
+}
+
+.customer-app .customer-nav.active,
+.admin-app .admin-nav.active {
+  border-color: #d5e6db !important;
+  color: #15583f !important;
+  background: #edf5ef !important;
+  box-shadow: inset 3px 0 #17684f !important;
+}
+
+.customer-app .customer-nav.active > span,
+.admin-app .admin-nav.active > span {
+  color: #17684f !important;
+}
+
+.customer-app .customer-status,
+.customer-app .customer-earn-status,
+.customer-app .customer-session-pill,
+.customer-app .customer-custody-status,
+.admin-app .admin-session-pill,
+.admin-app .admin-date {
+  border-color: #dce8df !important;
+  color: #35654d !important;
+  background: #f0f7f1 !important;
+}
+
+.customer-app .customer-profile-card,
+.customer-app .customer-wallet-list,
+.customer-app .customer-market-overview,
+.customer-app .customer-order-history,
+.customer-app .customer-profile-access,
+.customer-app .customer-session-list,
+.customer-app .customer-dashboard-overview > article,
+.customer-app .customer-module-card,
+.customer-app .customer-earn-intro,
+.customer-app .customer-earn-product,
+.customer-app .customer-feature-card,
+.customer-app .customer-activity-card,
+.customer-app .customer-security-card,
+.customer-app .customer-verification-card,
+.customer-app .customer-ledger-card,
+.customer-app .customer-transaction-history,
+.customer-app .customer-funding-history,
+.customer-app .earn-live-overview,
+.customer-app .earn-live-evolution,
+.customer-app .earn-customer-positions .earn-position-card,
+.admin-app .admin-card,
+.admin-app .stat-card,
+.admin-app .readiness-card,
+.admin-app .activity-card,
+.admin-app .rate-admin-form,
+.admin-app .order-modal,
+.admin-app .table-wrap {
+  border-color: #e3ebe5 !important;
+  color: #183129 !important;
+  background: #fff !important;
+  box-shadow: 0 8px 24px rgba(22, 51, 40, 0.055) !important;
+}
+
+.customer-app .customer-nav.active,
+.customer-app .customer-home-bottom-nav .customer-nav.active {
+  color: #15583f !important;
+}
+
+.customer-app .customer-nav.active {
+  background: #edf5ef !important;
+}
+
+.customer-app .customer-profile-card p,
+.customer-app .customer-module-card > p,
+.customer-app .customer-module-card li,
+.customer-app .customer-profile-details dt,
+.customer-app .customer-profile-state > span,
+.customer-app .customer-profile-links small,
+.customer-app .customer-dashboard-note,
+.customer-app .customer-content-footer,
+.customer-app .customer-earn-intro > p,
+.customer-app .customer-earn-empty > p,
+.customer-app .earn-live-heading p,
+.customer-app .earn-evolution-heading p,
+.customer-app .earn-position-section-heading p,
+.customer-app .earn-position-pending,
+.customer-app .earn-position-dates,
+.customer-app .earn-position-rewards > p,
+.customer-app .earn-live-stats article > span,
+.customer-app .earn-live-stats article > small,
+.customer-app .earn-position-metrics span {
+  color: #697a73 !important;
+}
+
+.customer-app .customer-profile-card-heading,
+.customer-app .customer-profile-details > div,
+.customer-app .customer-profile-state,
+.customer-app .customer-profile-links > a,
+.customer-app .customer-wallet-row,
+.customer-app .customer-ledger-balance-row,
+.customer-app .customer-transaction-row,
+.customer-app .funding-activity-row,
+.customer-app .customer-order-history-heading,
+.customer-app .customer-earn-product dl > div,
+.customer-app .earn-position-rewards {
+  border-color: #e7eee8 !important;
+}
+
+.customer-app .customer-profile-links > a,
+.customer-app .customer-sidebar-bottom a,
+.customer-app .customer-sidebar-bottom button,
+.customer-app .customer-content-footer a,
+.customer-app .customer-wallet-row small,
+.customer-app .customer-ledger-disclaimer,
+.customer-app .customer-history-pagination,
+.customer-app .customer-transaction-main > small,
+.customer-app .customer-transaction-value > small {
+  color: #63766b !important;
+}
+
+.customer-app .customer-profile-links > a:hover,
+.customer-app .customer-sidebar-bottom a:hover,
+.customer-app .customer-sidebar-bottom button:hover {
+  color: #15583f !important;
+  background: #f4f8f4 !important;
+}
+
+.customer-app .button-primary,
+.admin-app .button-primary {
+  border-color: #17684f !important;
+  color: #fff !important;
+  background: #17684f !important;
+  box-shadow: 0 5px 14px rgba(23, 104, 79, 0.14) !important;
+}
+
+.customer-app .button-primary:hover:not(:disabled),
+.admin-app .button-primary:hover:not(:disabled) {
+  border-color: #0e513d !important;
+  background: #0e513d !important;
+}
+
+.customer-app .button-outline,
+.customer-app .button-quiet,
+.admin-app .button-outline,
+.admin-app .button-quiet {
+  border-color: #dce6df !important;
+  color: #315746 !important;
+  background: #fff !important;
+}
+
+.customer-app input,
+.customer-app select,
+.customer-app textarea,
+.admin-app input,
+.admin-app select,
+.admin-app textarea,
+.customer-app .field-label input,
+.customer-app .field-label select,
+.customer-app .field-label textarea {
+  border-color: #dce6df !important;
+  color: #183129 !important;
+  background: #fff !important;
+}
+
+.customer-app input:focus,
+.customer-app select:focus,
+.customer-app textarea:focus,
+.admin-app input:focus,
+.admin-app select:focus,
+.admin-app textarea:focus {
+  border-color: #73ad8b !important;
+  box-shadow: 0 0 0 3px rgba(23, 104, 79, 0.1) !important;
+  outline: 0;
+}
+
+.customer-app .customer-wallet-hero-copy > .eyebrow,
+.customer-app .customer-action-aside > .eyebrow,
+.customer-app .customer-market-add,
+.customer-app .customer-earn-apy,
+.customer-app .earn-live-stats article:first-child > strong,
+.customer-app .earn-live-stats article:nth-child(2) > strong,
+.customer-app .earn-term-progress > div:first-child > strong {
+  color: #17684f !important;
+}
+
+.admin-app .admin-title p,
+.admin-app .admin-topbar > span,
+.admin-app .admin-topbar > span b {
+  color: #697a73 !important;
+}
+
+.admin-app .admin-content table {
+  color: #30453b !important;
+}
+
+.admin-app .admin-content th {
+  color: #63766b !important;
+  background: #f5f8f5 !important;
+}
+
+.admin-app .admin-content td {
+  border-color: #e7eee8 !important;
+}
+
+.admin-app .admin-content tbody tr:hover {
+  background: #f7faf7 !important;
+}
+
+.admin-app .admin-content td strong,
+.admin-app .admin-content td b,
+.admin-app .admin-card h2,
+.admin-app .card-heading h2 {
+  color: #183129 !important;
+}
+
+.admin-app .admin-content td small,
+.admin-app .stat-card > span,
+.admin-app .stat-card small,
+.admin-app .card-heading p,
+.admin-app .card-description {
+  color: #697a73 !important;
+}
+
+.admin-app .admin-content input,
+.admin-app .admin-content select,
+.admin-app .admin-content textarea {
+  border-color: #dce6df !important;
+  color: #183129 !important;
+  background: #fff !important;
+}
+
+.admin-login {
+  color-scheme: light;
+  color: #183129 !important;
+  background: #f6f8f6 !important;
+}
+
+.admin-login section {
+  border-color: #e3ebe5 !important;
+  color: #183129 !important;
+  background: #fff !important;
+  box-shadow: 0 8px 24px rgba(22, 51, 40, 0.055) !important;
+}
+
+.admin-login h1 {
+  color: #183129 !important;
+}
+
+.admin-login p {
+  color: #697a73 !important;
+}
+
+.customer-home-brand,
+.customer-topbar-brand,
+.admin-topbar-brand {
+  display: none;
+}
+
+.customer-main-home {
+  background: #f6f8f6 !important;
+}
+
+.customer-main-home .customer-home-content {
+  width: min(100%, 1480px);
+  max-width: 1480px;
+  padding: 28px clamp(18px, 3vw, 42px) 40px;
+}
+
+.customer-home-page-heading {
+  display: flex !important;
+}
+
+.customer-home-shell {
+  display: grid;
+  width: 100%;
+  max-width: none;
+  grid-template-columns: minmax(0, 1.05fr) minmax(330px, 0.95fr);
+  align-items: stretch;
+  gap: 18px;
+}
+
+.customer-main-home .customer-wallet-hero {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 22px;
+  margin: 0;
+  padding: clamp(22px, 2.8vw, 32px);
+  border: 1px solid #e2ebe4 !important;
+  border-radius: 16px;
+  background:
+    radial-gradient(ellipse at 100% 0%, rgba(211, 168, 59, 0.1), transparent 42%),
+    linear-gradient(135deg, #fff, #f8fbf8) !important;
+  box-shadow: 0 8px 24px rgba(22, 51, 40, 0.055) !important;
+}
+
+.customer-main-home .customer-wallet-value {
+  justify-items: start;
+  text-align: left;
+}
+
+.customer-main-home .customer-wallet-value-label {
+  color: #687a71;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.customer-main-home .customer-wallet-value > strong {
+  color: #183129;
+  font-size: clamp(30px, 3.5vw, 42px);
+}
+
+.customer-main-home .customer-wallet-source {
+  color: #70867a !important;
+}
+
+.customer-main-home .customer-wallet-breakdown {
+  gap: 9px;
+  margin-top: 0;
+}
+
+.customer-main-home .customer-wallet-breakdown > div {
+  padding: 11px 8px;
+  border: 1px solid #e6eee7;
+  border-radius: 11px;
+  background: #f6f9f6 !important;
+}
+
+.customer-main-home .customer-wallet-breakdown span {
+  color: #718178;
+  font-size: 9px;
+}
+
+.customer-main-home .customer-wallet-breakdown strong {
+  color: #264537;
+  font-size: 12px;
+}
+
+.customer-main-home .customer-wallet-actions {
+  margin-top: auto;
+}
+
+.customer-main-home .customer-wallet-actions a {
+  min-height: 44px;
+  border: 1px solid #dce6df !important;
+  border-radius: 10px;
+  color: #315746 !important;
+  background: #fff !important;
+}
+
+.customer-main-home .customer-wallet-actions a.primary {
+  border-color: #17684f !important;
+  color: #fff !important;
+  background: #17684f !important;
+}
+
+.customer-main-home .customer-home-markets {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  padding: 22px;
+  border: 1px solid #e2ebe4 !important;
+  border-radius: 16px !important;
+  background: #fff !important;
+  box-shadow: 0 8px 24px rgba(22, 51, 40, 0.055) !important;
+}
+
+.customer-main-home .customer-home-markets .customer-market-heading {
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 0 15px;
+}
+
+.customer-main-home .customer-market-heading h2 {
+  margin: 5px 0 0;
+  color: #183129 !important;
+  font-size: 19px;
+}
+
+.customer-main-home .customer-market-tabs {
+  gap: 14px;
+  padding: 8px 0;
+  border-bottom: 1px solid #edf2ed;
+}
+
+.customer-main-home .customer-market-tabs button {
+  color: #728178 !important;
+  font-size: 11px;
+}
+
+.customer-main-home .customer-market-tabs button.active {
+  color: #15583f !important;
+}
+
+.customer-main-home .customer-market-list {
+  flex: 1;
+}
+
+.customer-main-home .customer-market-row {
+  min-height: 60px;
+  border-bottom: 1px solid #f0f3f0;
+}
+
+.customer-main-home .customer-market-name strong,
+.customer-main-home .customer-market-price {
+  color: #183129 !important;
+}
+
+.customer-main-home .customer-market-link:hover .customer-market-name strong {
+  color: #17684f !important;
+}
+
+.customer-main-home .customer-market-disclaimer {
+  margin-top: auto;
+  border-color: #edf2ed;
+  color: #829087 !important;
+}
+
+.customer-main-home .customer-order-history {
+  margin-top: 18px;
+  padding: clamp(18px, 2.6vw, 28px);
+  border: 1px solid #e2ebe4 !important;
+  border-radius: 16px;
+  background: #fff !important;
+  box-shadow: 0 8px 24px rgba(22, 51, 40, 0.055) !important;
+}
+
+.customer-main-home .customer-order-history-heading h2 {
+  color: #183129 !important;
+}
+
+.customer-home-bottom-nav {
+  border-color: #e3ebe5 !important;
+  background: rgba(255, 255, 255, 0.98) !important;
+}
+
+.customer-home-bottom-nav .customer-nav.active {
+  color: #17684f !important;
+}
+
+.customer-home-bottom-nav .customer-home-trade > span {
+  background: #17684f;
+  box-shadow: 0 5px 13px rgba(23, 104, 79, 0.2);
+}
+
+@media (max-width: 1100px) {
+  .customer-home-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 700px) {
+  .customer-home-brand,
+  .customer-topbar-brand,
+  .admin-topbar-brand {
+    display: grid;
+    flex: 0 0 36px;
+    place-items: center;
+  }
+
+  .customer-home-brand img,
+  .customer-topbar-brand img,
+  .admin-topbar-brand img {
+    width: 34px !important;
+    min-width: 34px;
+    height: 34px !important;
+    max-height: 34px !important;
+  }
+
+  .customer-home-topbar {
+    justify-content: space-between;
+    gap: 5px;
+  }
+
+  .customer-home-menu-button,
+  .customer-home-notifications {
+    width: 30px;
+    flex-basis: 30px;
+  }
+
+  .customer-home-product-tabs {
+    width: auto;
+    max-width: none;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .customer-home-product-tabs a {
+    min-width: 0;
+    padding-inline: 5px;
+    font-size: 9px;
+    white-space: nowrap;
+  }
+
+  .customer-main-home .customer-home-content {
+    padding: 16px 16px 28px;
+  }
+
+  .customer-home-page-heading {
+    margin-bottom: 16px;
+  }
+
+  .customer-main-home .customer-wallet-hero {
+    gap: 18px;
+    padding: 20px;
+  }
+
+  .customer-main-home .customer-home-markets {
+    padding: 18px;
+  }
+
+  .customer-main-home .customer-market-heading {
+    align-items: flex-start !important;
+    flex-direction: column;
+  }
+
+  .customer-main-home .customer-wallet-actions {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .customer-app .customer-topbar {
+    gap: 8px;
+    padding-inline: 14px;
+  }
+
+  .customer-app .customer-topbar > div:first-of-type {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .customer-app .customer-topbar > div:first-of-type strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .customer-app .customer-user-chip b {
+    display: none;
+  }
+
+  .admin-app .admin-topbar {
+    gap: 8px;
+  }
+
+  .admin-app .admin-topbar > span {
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 380px) {
+  .customer-main-home .customer-home-content {
+    padding-inline: 12px;
+  }
+
+  .customer-main-home .customer-home-markets {
+    padding: 15px;
+  }
+}
