@@ -258,7 +258,7 @@ function Header() {
     <header className="site-header">
       <div className="nav-wrap">
         <Link to="/" className="brand transition-transform duration-300 hover:scale-[1.03]">
-          <img src="/images/dae-mark.png" alt="DAE Crypto" />
+          <img src="/images/dae-logo.png" alt="DAE Crypto" />
         </Link>
         <button
           className="mobile-menu"
@@ -322,9 +322,9 @@ function Footer() {
     </footer>
   );
 }
-function Shell({ children }) {
+function Shell({ children, className = '' }) {
   return (
-    <div className="app-shell min-h-screen bg-void text-slate-100">
+    <div className={`app-shell min-h-screen bg-void text-slate-100 ${className}`}>
       <Header />
       {children}
       <Footer />
@@ -668,7 +668,7 @@ function Home() {
     return matchQuery && matchTab;
   });
   return (
-    <Shell>
+    <Shell className="landing-shell">
       <main>
         <section className="hero">
           <div className="hero-crypto-scene" aria-hidden="true">
@@ -749,6 +749,45 @@ function Home() {
               </Link>
             </div>
           </div>
+        </section>
+        <section className="home-market-ticker" aria-label="Cours des marchés en bref">
+          <div className="home-market-ticker-heading">
+            <span className="eyebrow plain">MARCHÉS EN BREF</span>
+            <span>
+              {marketState === 'loading' && !updated
+                ? 'Chargement des cotations…'
+                : marketStale || marketState === 'unavailable'
+                  ? `Données en cache · ${updated}`
+                  : updated
+                    ? `Mis à jour · ${updated}`
+                    : 'Cours indisponibles'}
+            </span>
+          </div>
+          {markets.length ? (
+            <div className="home-market-ticker-items">
+              {markets.slice(0, 5).map((market) => (
+                <article key={market.asset}>
+                  <span className={`coin coin-${market.asset}`}>{market.asset.slice(0, 1)}</span>
+                  <div>
+                    <strong>{market.asset}</strong>
+                    <small>{market.name}</small>
+                  </div>
+                  <strong className="home-market-ticker-price">
+                    {market.priceUsd ? `$${number(market.priceUsd, market.priceUsd < 1 ? 6 : 2)}` : 'Sur devis'}
+                  </strong>
+                  <span className={(market.change24h || 0) >= 0 ? 'change positive' : 'change negative'}>
+                    {market.priceUsd
+                      ? `${(market.change24h || 0) >= 0 ? '+' : ''}${number(market.change24h, 2)}%`
+                      : '—'}
+                  </span>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <p className="home-market-ticker-empty">
+              Les cotations réelles seront affichées ici dès qu’elles seront disponibles.
+            </p>
+          )}
         </section>
         <section id="marches" className="market-section">
           <div className="section-heading">
@@ -2075,7 +2114,7 @@ function AccountAccess({ initialMode = 'login' }) {
       <main className="account-access-wrap">
         <section className="account-access-card">
           <div className="account-access-brand">
-            <img src="/images/dae-mark.png" alt="DAE Crypto" />
+            <img src="/images/dae-logo.png" alt="DAE Crypto" />
             <span>PLATEFORME DAE</span>
           </div>
           <div className="account-access-heading">
@@ -2384,7 +2423,7 @@ function PasswordRecovery() {
       <main className="account-access-wrap recovery-wrap">
         <section className="account-access-card">
           <div className="account-access-brand">
-            <img src="/images/dae-mark.png" alt="DAE Crypto" />
+            <img src="/images/dae-logo.png" alt="DAE Crypto" />
             <span>RÉCUPÉRATION SÉCURISÉE</span>
           </div>
           <div className="account-access-heading">
@@ -3062,6 +3101,16 @@ function CustomerEarnPage({ trackingOnly = false }) {
       )}
       {!trackingOnly && catalog && (
         <section className="customer-earn-products" aria-label="Produits DAE Earn">
+          <div className="customer-earn-products-heading">
+            <div>
+              <span className="eyebrow plain">OFFRES DAE EARN</span>
+              <h3>Choisissez votre programme</h3>
+              <p>Comparez les conditions et le terme avant de verrouiller votre capital.</p>
+            </div>
+            <span className="customer-earn-product-count">
+              {catalog.products.length} offre{catalog.products.length > 1 ? 's' : ''}
+            </span>
+          </div>
           {catalog.products.map((product) => (
             <article className="customer-earn-product" key={product.productId}>
               <span className="eyebrow plain">
@@ -3128,6 +3177,11 @@ function CustomerEarnPage({ trackingOnly = false }) {
               </button>
             </article>
           ))}
+          {!catalog.products.length && (
+            <p className="customer-earn-empty customer-earn-no-products">
+              Aucun produit DAE Earn n’est disponible pour le moment.
+            </p>
+          )}
         </section>
       )}
       {!trackingOnly && (
@@ -3300,7 +3354,8 @@ function CustomerPortal() {
     };
   }, [path]);
   useEffect(() => {
-    if (path !== '/compte' && path !== '/portefeuille') return undefined;
+    if (!['/compte', '/portefeuille', '/envoyer', '/depot', '/retrait'].includes(path))
+      return undefined;
     let active = true;
     let requestPending = false;
     let initialLoad = true;
@@ -3322,7 +3377,7 @@ function CustomerPortal() {
       }
     };
     refreshBalances();
-    const interval = path === '/compte' ? setInterval(refreshBalances, 30_000) : null;
+    const interval = setInterval(refreshBalances, 30_000);
     return () => {
       active = false;
       if (interval) clearInterval(interval);
@@ -3628,7 +3683,7 @@ function CustomerPortal() {
     <div className="customer-app min-h-screen bg-void text-slate-100">
       <aside className={`customer-sidebar${path === '/compte' ? ' customer-sidebar-home' : ''}`}>
         <Link to="/" className="customer-brand transition-transform duration-300 hover:scale-[1.03]">
-          <img src="/images/dae-mark.png" alt="DAE Crypto" />
+          <img src="/images/dae-logo.png" alt="DAE Crypto" />
         </Link>
         <span className="customer-menu-label">ESPACE PERSONNEL</span>
         <nav>
@@ -4032,91 +4087,111 @@ function CustomerPortal() {
             </>
           )}
           {path === '/envoyer' && (
-            <section className="customer-transfer-panel">
-              <div className="customer-order-history-heading">
-                <div>
-                  <span className="eyebrow plain">TRANSFERT ENTRE MEMBRES</span>
-                  <h2>Envoyer des USDT</h2>
+            <div className="customer-transfer-layout">
+              <aside className="customer-action-aside">
+                <span className="eyebrow plain">TRANSFERT INTERNE · USDT</span>
+                <h2>Envoyez des fonds à un autre compte DAE.</h2>
+                <p>
+                  Le transfert utilise votre solde USDT BEP20. Le destinataire est identifié par
+                  l’e-mail de son compte et l’envoi est confirmé par un code reçu par e-mail.
+                </p>
+                <div className="customer-action-balance">
+                  <span>Solde disponible · USDT BEP20</span>
+                  <strong>
+                    {balancesError
+                      ? 'Indisponible'
+                      : balancesLoading
+                        ? 'Chargement…'
+                        : `${formatDecimalString(bscUsdtBalance?.available || '0')} USDT`}
+                  </strong>
                 </div>
-              </div>
-              <p>
-                Saisis l’e-mail du compte DAE destinataire. Le montant sera débité de ton solde USDT
-                BEP20; des frais de 0,05 % seront déduits de ce montant. L’envoi nécessite un code
-                de confirmation reçu par e-mail.
-              </p>
-              <Notice>{transferError}</Notice>
-              {transferMessage && <p className="customer-transfer-message" role="status">{transferMessage}</p>}
-              {!transferChallenge ? (
-                <form className="customer-transfer-form" onSubmit={requestCustomerTransfer}>
-                  <label>
-                    E-mail du destinataire
-                    <input
-                      required
-                      type="email"
-                      autoComplete="email"
-                      value={transferRecipientEmail}
-                      onChange={(event) => setTransferRecipientEmail(event.target.value)}
-                      placeholder="destinataire@exemple.com"
-                    />
-                  </label>
-                  <label>
-                    Montant débité · USDT
-                    <input
-                      required
-                      inputMode="decimal"
-                      pattern="(?:0|[1-9][0-9]*)(?:\\.[0-9]{1,18})?"
-                      value={transferAmount}
-                      onChange={(event) => setTransferAmount(event.target.value)}
-                      placeholder="1.00"
-                    />
-                  </label>
-                  <p>Minimum : 1 USDT. Les frais sont 0,05 % du montant; le destinataire reçoit le montant net.</p>
-                  <button className="button button-primary" disabled={transferBusy}>
-                    {transferBusy ? 'Envoi du code…' : 'Continuer et recevoir un code'}
-                  </button>
-                </form>
-              ) : (
-                <form className="customer-transfer-form" onSubmit={confirmCustomerTransfer}>
-                  <div className="customer-transfer-summary">
-                    <span>Destinataire <strong>{transferChallenge.recipientEmail}</strong></span>
-                    <span>Débit total <strong>{transferChallenge.amount} USDT</strong></span>
-                    <span>Frais <strong>{transferChallenge.fee} USDT</strong></span>
-                    <span>Montant reçu <strong>{transferChallenge.recipientAmount} USDT</strong></span>
+                <div className="customer-action-facts">
+                  <div><span>Commission</span><strong>0,05 %</strong></div>
+                  <div><span>Montant minimum</span><strong>1 USDT</strong></div>
+                  <div><span>Confirmation</span><strong>Code e-mail</strong></div>
+                </div>
+              </aside>
+              <section className="customer-transfer-panel">
+                <div className="customer-order-history-heading">
+                  <div>
+                    <span className="eyebrow plain">NOUVEAU TRANSFERT</span>
+                    <h2>{transferChallenge ? 'Confirmer le transfert' : 'Détails du transfert'}</h2>
                   </div>
-                  <label>
-                    Code reçu par e-mail
-                    <input
-                      required
-                      inputMode="numeric"
-                      autoComplete="one-time-code"
-                      pattern="[0-9]{6}"
-                      maxLength={6}
-                      value={transferCode}
-                      onChange={(event) => setTransferCode(event.target.value)}
-                      placeholder="000000"
-                    />
-                  </label>
-                  <div className="customer-transfer-actions">
+                </div>
+                <Notice>{transferError}</Notice>
+                {transferMessage && <p className="customer-transfer-message" role="status">{transferMessage}</p>}
+                {!transferChallenge ? (
+                  <form className="customer-transfer-form" onSubmit={requestCustomerTransfer}>
+                    <label>
+                      E-mail du destinataire
+                      <input
+                        required
+                        type="email"
+                        autoComplete="email"
+                        value={transferRecipientEmail}
+                        onChange={(event) => setTransferRecipientEmail(event.target.value)}
+                        placeholder="destinataire@exemple.com"
+                      />
+                    </label>
+                    <label>
+                      Montant débité · USDT
+                      <input
+                        required
+                        inputMode="decimal"
+                        pattern="(?:0|[1-9][0-9]*)(?:\\.[0-9]{1,18})?"
+                        value={transferAmount}
+                        onChange={(event) => setTransferAmount(event.target.value)}
+                        placeholder="1.00"
+                      />
+                    </label>
+                    <p>Les frais sont de 0,05 % du montant débité. Le montant net et les frais seront affichés avant confirmation.</p>
                     <button className="button button-primary" disabled={transferBusy}>
-                      {transferBusy ? 'Confirmation…' : 'Confirmer l’envoi'}
+                      {transferBusy ? 'Envoi du code…' : 'Continuer et recevoir un code'}
                     </button>
-                    <button
-                      type="button"
-                      className="button button-outline"
-                      disabled={transferBusy}
-                      onClick={() => {
-                        setTransferChallenge(null);
-                        setTransferCode('');
-                        setTransferError('');
-                      }}
-                    >
-                      Annuler
-                    </button>
-                  </div>
-                  <small>Le code expire à {new Date(transferChallenge.expiresAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}.</small>
-                </form>
-              )}
-            </section>
+                  </form>
+                ) : (
+                  <form className="customer-transfer-form" onSubmit={confirmCustomerTransfer}>
+                    <div className="customer-transfer-summary">
+                      <span>Destinataire <strong>{transferChallenge.recipientEmail}</strong></span>
+                      <span>Débit total <strong>{transferChallenge.amount} USDT</strong></span>
+                      <span>Frais <strong>{transferChallenge.fee} USDT</strong></span>
+                      <span>Montant reçu <strong>{transferChallenge.recipientAmount} USDT</strong></span>
+                    </div>
+                    <label>
+                      Code reçu par e-mail
+                      <input
+                        required
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        pattern="[0-9]{6}"
+                        maxLength={6}
+                        value={transferCode}
+                        onChange={(event) => setTransferCode(event.target.value)}
+                        placeholder="000000"
+                      />
+                    </label>
+                    <div className="customer-transfer-actions">
+                      <button className="button button-primary" disabled={transferBusy}>
+                        {transferBusy ? 'Confirmation…' : 'Confirmer l’envoi'}
+                      </button>
+                      <button
+                        type="button"
+                        className="button button-outline"
+                        disabled={transferBusy}
+                        onClick={() => {
+                          setTransferChallenge(null);
+                          setTransferCode('');
+                          setTransferError('');
+                        }}
+                      >
+                        Annuler
+                      </button>
+                    </div>
+                    <small>Le code expire à {new Date(transferChallenge.expiresAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}.</small>
+                  </form>
+                )}
+              </section>
+            </div>
           )}
           {path === '/transactions' && (
             <>
@@ -4327,14 +4402,31 @@ function CustomerPortal() {
           )}
           {path === '/portefeuille' && (
             <>
-              <section className="customer-module-card">
-                <div className="module-lock-icon">◈</div>
-                <span className="eyebrow plain">CONSERVATION SÉCURISÉE</span>
-                <h2>Votre portefeuille, conservé par DAE.</h2>
-                <p>
-                  Consultez ici les soldes enregistrés sur votre compte DAE et l’adresse de dépôt
-                  USDT sur BNB Smart Chain lorsqu’elle est disponible.
-                </p>
+              <section className="customer-wallet-hero" aria-label="Résumé du portefeuille">
+                <div className="customer-wallet-hero-copy">
+                  <span className="eyebrow plain">PORTEFEUILLE DAE</span>
+                  <h2>Vos actifs, réunis au même endroit.</h2>
+                  <p>
+                    Consultez les soldes réellement enregistrés dans votre ledger et accédez
+                    directement aux opérations disponibles sur votre compte.
+                  </p>
+                  <div className="customer-wallet-hero-actions">
+                    <Link to="/depot" className="button button-primary">Déposer</Link>
+                    <Link to="/retrait" className="button button-outline">Retirer</Link>
+                    <Link to="/envoyer" className="button button-outline">Envoyer</Link>
+                  </div>
+                </div>
+                <div className="customer-wallet-hero-balance">
+                  <span>Solde disponible · USDT BEP20</span>
+                  <strong>
+                    {balancesError
+                      ? 'Indisponible'
+                      : balancesLoading
+                        ? 'Chargement…'
+                        : `${formatDecimalString(bscUsdtBalance?.available || '0')} USDT`}
+                  </strong>
+                  <small>Solde du compte DAE · BNB Smart Chain</small>
+                </div>
               </section>
               <section className="customer-wallet-list customer-ledger-balances" aria-label="Soldes du compte">
                 <div className="customer-wallet-list-heading">
@@ -4454,79 +4546,116 @@ function CustomerPortal() {
           )}
           {path === '/depot' && (
             <>
-            <section className="customer-module-card">
-              <div className="module-lock-icon">↓</div>
-              <span className="eyebrow plain">DÉPÔT · BNB SMART CHAIN</span>
-              <h2>Déposer des USDT · BNB Smart Chain</h2>
-              {features?.custody?.deposits?.enabled && bscDepositWallet?.address ? (
-                <>
+              <div className="customer-funding-layout">
+                <aside className="customer-action-aside">
+                  <span className="eyebrow plain">DÉPÔT · BNB SMART CHAIN</span>
+                  <h2>Alimentez votre compte DAE.</h2>
                   <p>
-                    Envoyez uniquement des USDT sur le réseau BNB Smart Chain (BEP20) à cette
-                    adresse. Les envois depuis un autre réseau peuvent être perdus.
+                    Utilisez uniquement votre adresse personnelle et le réseau BEP20 pour
+                    déposer des USDT.
                   </p>
-                  <DepositAddress
-                    address={bscDepositWallet.address}
-                    contractAddress={features?.custody?.deposits?.tokenContract}
-                    chainId={features?.custody?.deposits?.chainId}
-                  />
-                  <div className="module-state"><i /> Adresse de dépôt active · USDT BEP20</div>
-                </>
-              ) : customer.kycStatus !== 'approved' ? (
-                <>
-                  <p>
-                    Validez votre vérification d’identité pour accéder aux dépôts. Aucune adresse
-                    de dépôt n’est active pour votre compte actuellement.
-                  </p>
-                  <Link className="button button-outline" to="/verification">
-                    Consulter ma vérification
-                  </Link>
-                </>
-              ) : (
-                <>
-                  <p>
-                    Les dépôts USDT sont temporairement indisponibles. Une adresse apparaîtra ici
-                    dès que le service pourra recevoir et suivre vos fonds en toute sécurité.
-                    N’envoyez pas de fonds à une ancienne adresse.
-                  </p>
-                  <Link className="button button-outline" to="/contact">
-                    Contacter l’assistance
-                  </Link>
-                </>
-              )}
-            </section>
-            <CustomerFundingHistory type="deposit" />
+                  <ol className="customer-action-steps">
+                    <li><span>01</span><div><strong>Vérifiez le réseau</strong><small>BNB Smart Chain · BEP20</small></div></li>
+                    <li><span>02</span><div><strong>Copiez votre adresse</strong><small>Envoyez uniquement des USDT à cette adresse.</small></div></li>
+                    <li><span>03</span><div><strong>Suivez l’opération</strong><small>Consultez le statut dans l’historique ci-dessous.</small></div></li>
+                  </ol>
+                  <Link to="/portefeuille" className="customer-action-text-link">Retour au portefeuille →</Link>
+                </aside>
+                <section className="customer-module-card customer-funding-main-card">
+                  <div className="module-lock-icon">↓</div>
+                  <span className="eyebrow plain">ADRESSE DE DÉPÔT</span>
+                  <h2>Déposer des USDT · BNB Smart Chain</h2>
+                  {features?.custody?.deposits?.enabled && bscDepositWallet?.address ? (
+                    <>
+                      <p>
+                        Envoyez uniquement des USDT sur le réseau BNB Smart Chain (BEP20) à cette
+                        adresse. Les envois depuis un autre réseau peuvent être perdus.
+                      </p>
+                      <DepositAddress
+                        address={bscDepositWallet.address}
+                        contractAddress={features?.custody?.deposits?.tokenContract}
+                        chainId={features?.custody?.deposits?.chainId}
+                      />
+                      <div className="module-state"><i /> Adresse de dépôt active · USDT BEP20</div>
+                    </>
+                  ) : customer.kycStatus !== 'approved' ? (
+                    <>
+                      <p>
+                        Validez votre vérification d’identité pour accéder aux dépôts. Aucune adresse
+                        de dépôt n’est active pour votre compte actuellement.
+                      </p>
+                      <Link className="button button-outline" to="/verification">
+                        Consulter ma vérification
+                      </Link>
+                    </>
+                  ) : (
+                    <>
+                      <p>
+                        Les dépôts USDT sont temporairement indisponibles. Une adresse apparaîtra ici
+                        dès que le service pourra recevoir et suivre vos fonds en toute sécurité.
+                        N’envoyez pas de fonds à une ancienne adresse.
+                      </p>
+                      <Link className="button button-outline" to="/contact">
+                        Contacter l’assistance
+                      </Link>
+                    </>
+                  )}
+                </section>
+              </div>
+              <CustomerFundingHistory type="deposit" />
             </>
           )}
           {path === '/retrait' && (
             <>
-            <section className="customer-module-card">
-              <div className="module-lock-icon">↑</div>
-              <span className="eyebrow plain">RETRAIT · BNB SMART CHAIN</span>
-              <h2>Retirer des USDT · BNB Smart Chain</h2>
-              <p>
-                Les retraits sont disponibles sur le réseau BNB Smart Chain pour les comptes qui
-                ont terminé leur vérification. Vérifiez soigneusement l’adresse avant de confirmer.
-              </p>
-              {features?.custody?.withdrawals?.enabled ? (
-                <form className="bsc-withdrawal-form" onSubmit={submitBscWithdrawal}>
-                  <label>Montant · USDT BEP20<input required inputMode="decimal" value={withdrawalAmount} onChange={(event) => setWithdrawalAmount(event.target.value)} placeholder="0.00" /></label>
-                  <label>Adresse BSC de destination<input required value={withdrawalDestination} onChange={(event) => setWithdrawalDestination(event.target.value)} placeholder="0x…" autoComplete="off" /></label>
-                  <button className="button button-primary" disabled={withdrawalBusy}>{withdrawalBusy ? 'Envoi…' : 'Retirer'}</button>
-                </form>
-              ) : (
-                customer.kycStatus !== 'approved' ? (
+              <div className="customer-funding-layout">
+                <aside className="customer-action-aside">
+                  <span className="eyebrow plain">RETRAIT · BNB SMART CHAIN</span>
+                  <h2>Retirez vers votre portefeuille externe.</h2>
                   <p>
-                    Terminez votre vérification d’identité avant de pouvoir retirer.
-                    <Link to="/verification"> Consulter ma vérification →</Link>
+                    Vérifiez le réseau et l’adresse de destination avant d’envoyer votre demande.
+                    Les retraits restent soumis aux contrôles de votre compte.
                   </p>
-                ) : (
-                  <p>Les retraits sont temporairement indisponibles. Réessayez plus tard.</p>
-                )
-              )}
-              {withdrawalMessage && <p role="status">{withdrawalMessage}</p>}
-              {withdrawalError && <Notice>{withdrawalError}</Notice>}
-            </section>
-            <CustomerFundingHistory key={withdrawalRefresh} type="withdrawal" />
+                  <div className="customer-action-balance">
+                    <span>Solde disponible · USDT BEP20</span>
+                    <strong>
+                      {balancesError
+                        ? 'Indisponible'
+                        : balancesLoading
+                          ? 'Chargement…'
+                          : `${formatDecimalString(bscUsdtBalance?.available || '0')} USDT`}
+                    </strong>
+                  </div>
+                  <div className="customer-action-warning">
+                    Réseau pris en charge : BNB Smart Chain (BEP20). Une adresse d’un autre réseau
+                    peut entraîner la perte des fonds.
+                  </div>
+                  <Link to="/transactions" className="customer-action-text-link">Consulter mes opérations →</Link>
+                </aside>
+                <section className="customer-module-card customer-funding-main-card">
+                  <div className="module-lock-icon">↑</div>
+                  <span className="eyebrow plain">NOUVELLE DEMANDE</span>
+                  <h2>Retirer des USDT · BNB Smart Chain</h2>
+                  {features?.custody?.withdrawals?.enabled ? (
+                    <form className="bsc-withdrawal-form" onSubmit={submitBscWithdrawal}>
+                      <label>Montant · USDT BEP20<input required inputMode="decimal" value={withdrawalAmount} onChange={(event) => setWithdrawalAmount(event.target.value)} placeholder="0.00" /></label>
+                      <label>Adresse BSC de destination<input required value={withdrawalDestination} onChange={(event) => setWithdrawalDestination(event.target.value)} placeholder="0x…" autoComplete="off" /></label>
+                      <button className="button button-primary" disabled={withdrawalBusy}>{withdrawalBusy ? 'Envoi…' : 'Créer une demande de retrait'}</button>
+                    </form>
+                  ) : (
+                    customer.kycStatus !== 'approved' ? (
+                      <p>
+                        Terminez votre vérification d’identité avant de pouvoir retirer.
+                        <Link to="/verification"> Consulter ma vérification →</Link>
+                      </p>
+                    ) : (
+                      <p>Les retraits sont temporairement indisponibles. Réessayez plus tard.</p>
+                    )
+                  )}
+                  {withdrawalMessage && <p role="status">{withdrawalMessage}</p>}
+                  {withdrawalError && <Notice>{withdrawalError}</Notice>}
+                </section>
+              </div>
+              <CustomerFundingHistory key={withdrawalRefresh} type="withdrawal" />
             </>
           )}
           {path === '/staking' && <CustomerEarnPage />}
@@ -5189,7 +5318,7 @@ function Admin() {
     return (
       <main className="admin-login">
         <Link to="/" className="brand transition-transform duration-300 hover:scale-[1.03]">
-          <img src="/images/dae-mark.png" alt="DAE Crypto" />
+          <img src="/images/dae-logo.png" alt="DAE Crypto" />
         </Link>
         <section>
           <span className="eyebrow plain">ESPACE ÉQUIPE</span>
@@ -5223,7 +5352,7 @@ function Admin() {
     <div className="admin-app min-h-screen bg-void text-slate-100">
       <aside className="admin-sidebar">
         <Link to="/" className="brand">
-          <img src="/images/dae-mark.png" alt="DAE Crypto" />
+          <img src="/images/dae-logo.png" alt="DAE Crypto" />
         </Link>
         <div className="admin-label">ESPACE DE GESTION</div>
         {[
