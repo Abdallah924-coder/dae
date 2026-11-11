@@ -3198,8 +3198,6 @@ function CustomerPortal() {
   const [balances, setBalances] = useState([]);
   const [balancesLoading, setBalancesLoading] = useState(false);
   const [balancesError, setBalancesError] = useState('');
-  const [overview, setOverview] = useState(null);
-  const [overviewError, setOverviewError] = useState('');
   const [orders, setOrders] = useState([]);
   const [orderPagination, setOrderPagination] = useState({
     page: 1,
@@ -3242,6 +3240,11 @@ function CustomerPortal() {
   const [transferError, setTransferError] = useState('');
   const [loading, setLoading] = useState(true);
   const path = route.pathname.replace(/\/$/, '') || '/compte';
+  const [dashboardMarketTab, setDashboardMarketTab] = useState('watchlist');
+  const [dashboardWatchlist, setDashboardWatchlist] = useState([]);
+  const [dashboardWatchlistLoading, setDashboardWatchlistLoading] = useState(false);
+  const [dashboardWatchlistSaving, setDashboardWatchlistSaving] = useState(false);
+  const [dashboardWatchlistError, setDashboardWatchlistError] = useState('');
   useEffect(() => {
     Promise.all([
       api('/api/account/me'),
@@ -3278,34 +3281,48 @@ function CustomerPortal() {
     };
   }, [path]);
   useEffect(() => {
-    if (path !== '/compte') return undefined;
+    if (path !== '/compte' && path !== '/portefeuille') return undefined;
     let active = true;
-    setOverviewError('');
-    api('/api/account/overview')
-      .then((result) => {
-        if (active) setOverview(result);
-      })
-      .catch((error) => {
-        if (active) setOverviewError(error.message);
-      });
+    let requestPending = false;
+    let initialLoad = true;
+    setBalancesError('');
+    const refreshBalances = async () => {
+      if (requestPending) return;
+      requestPending = true;
+      if (initialLoad) setBalancesLoading(true);
+      setBalancesError('');
+      try {
+        const result = await api('/api/account/balances');
+        if (active) setBalances(result.balances || []);
+      } catch (error) {
+        if (active) setBalancesError(error.message);
+      } finally {
+        requestPending = false;
+        if (active) setBalancesLoading(false);
+        initialLoad = false;
+      }
+    };
+    refreshBalances();
+    const interval = path === '/compte' ? setInterval(refreshBalances, 30_000) : null;
     return () => {
       active = false;
+      if (interval) clearInterval(interval);
     };
   }, [path]);
   useEffect(() => {
-    if (path !== '/portefeuille') return undefined;
+    if (path !== '/compte') return undefined;
     let active = true;
-    setBalancesLoading(true);
-    setBalancesError('');
-    api('/api/account/balances')
+    setDashboardWatchlistLoading(true);
+    setDashboardWatchlistError('');
+    api('/api/account/watchlist')
       .then((result) => {
-        if (active) setBalances(result.balances || []);
+        if (active) setDashboardWatchlist(result.assets || []);
       })
       .catch((error) => {
-        if (active) setBalancesError(error.message);
+        if (active) setDashboardWatchlistError(error.message);
       })
       .finally(() => {
-        if (active) setBalancesLoading(false);
+        if (active) setDashboardWatchlistLoading(false);
       });
     return () => {
       active = false;
@@ -3529,7 +3546,7 @@ function CustomerPortal() {
     setMobileMoreOpen(false);
   }, [route.pathname]);
   const titles = {
-    '/compte': 'Vue d’ensemble',
+    '/compte': 'Wallet DAE',
     '/profil': 'Mon profil',
     '/portefeuille': 'Mon portefeuille',
     '/transactions': 'Mes transactions',
@@ -3541,12 +3558,45 @@ function CustomerPortal() {
     '/verification': 'Vérification du compte',
     '/securite': 'Sécurité du compte',
   };
-  const usdtBalance = overview?.balances?.find(
-    (balance) => balance.asset === 'USDT' && balance.network === 'BEP20',
-  );
   const bscUsdtBalance = balances.find(
     (balance) => balance.asset === 'USDT' && balance.network === 'BEP20',
   );
+  const dashboardMarkets = marketSnapshot?.markets || [];
+  const displayedDashboardMarkets = dashboardMarkets.filter((market) => {
+    if (dashboardMarketTab === 'watchlist') return dashboardWatchlist.includes(market.asset);
+    if (dashboardMarketTab === 'gainers') return Number(market.change24h) > 0;
+    return true;
+  });
+  if (dashboardMarketTab === 'gainers') {
+    displayedDashboardMarkets.sort((left, right) => Number(right.change24h) - Number(left.change24h));
+  }
+  const toggleDashboardFavorite = async (asset) => {
+    if (dashboardWatchlistSaving) return;
+    const wasFavorite = dashboardWatchlist.includes(asset);
+    if (!wasFavorite && dashboardWatchlist.length >= 5) {
+      setDashboardWatchlistError('Vous pouvez enregistrer jusqu’à 5 favoris.');
+      return;
+    }
+    const previous = dashboardWatchlist;
+    const next = wasFavorite
+      ? previous.filter((item) => item !== asset)
+      : [...previous, asset];
+    setDashboardWatchlist(next);
+    setDashboardWatchlistSaving(true);
+    setDashboardWatchlistError('');
+    try {
+      const result = await api('/api/account/watchlist', {
+        method: 'PUT',
+        body: JSON.stringify({ assets: next }),
+      });
+      setDashboardWatchlist(result.assets || next);
+    } catch (error) {
+      setDashboardWatchlist(previous);
+      setDashboardWatchlistError(error.message);
+    } finally {
+      setDashboardWatchlistSaving(false);
+    }
+  };
   const bscDepositWallet = wallets.find((wallet) => wallet.network === 'BEP20');
   if (loading || !customer) {
     return <main className="customer-loading">Chargement de ton espace sécurisé…</main>;
@@ -3638,7 +3688,9 @@ function CustomerPortal() {
           </div>
         </header>
         <div className="customer-content">
-          <div className="customer-page-heading">
+          <div
+            className={`customer-page-heading${path === '/compte' ? ' customer-home-page-heading' : ''}`}
+          >
             <div>
               <span className="eyebrow plain">ESPACE CLIENT</span>
               <h1>{titles[path] || 'Espace client'}</h1>
@@ -3649,196 +3701,185 @@ function CustomerPortal() {
           </div>
           {path === '/compte' && (
             <>
-              <section className="customer-welcome">
-                <div>
-                  <span>BIENVENUE SUR DAE</span>
-                  <h2>Bonjour {customer.firstName},</h2>
-                  <p>Voici l’état de ton compte et les services actuellement disponibles.</p>
-                </div>
-                <CustomerAvatar customer={customer} large />
-              </section>
-              <section className="customer-dashboard-overview" aria-label="Résumé du compte">
-                <article className="customer-dashboard-balance">
-                  <span>Solde disponible · USDT</span>
-                  <strong>
-                    {overviewError
-                      ? '—'
-                      : overview
-                        ? formatDecimalString(usdtBalance?.available || '0')
-                        : '…'}
-                    <small> USDT</small>
-                  </strong>
-                  <div>
-                    <span>Réseau BNB Smart Chain</span>
-                    <Link to="/portefeuille">Voir le portefeuille →</Link>
+              <div className="customer-home-shell">
+                <nav className="customer-home-product-tabs" aria-label="Produits DAE">
+                  <Link to="/#marches">Exchange</Link>
+                  <Link to="/staking">DAE Earn</Link>
+                  <Link to="/portefeuille" className="active" aria-current="page">
+                    Wallet
+                  </Link>
+                </nav>
+                <section className="customer-wallet-hero" aria-label="Solde réel du portefeuille">
+                  <div className="customer-wallet-hero-heading">
+                    <div>
+                      <span className="customer-wallet-eyebrow">DAE WALLET · USDT BEP20</span>
+                      <p>Solde disponible</p>
+                      <strong aria-live="polite">
+                        {balancesError
+                          ? '—'
+                          : balancesLoading
+                            ? '…'
+                            : formatDecimalString(bscUsdtBalance?.available || '0')}
+                        <small>USDT</small>
+                      </strong>
+                      <span className="customer-wallet-source">
+                        {balancesError
+                          ? 'Solde momentanément indisponible'
+                          : 'Solde réel enregistré dans le ledger DAE'}
+                      </span>
+                    </div>
+                    <Link to="/portefeuille" className="customer-wallet-view-all">
+                      Tous mes actifs <span aria-hidden="true">↗</span>
+                    </Link>
                   </div>
-                </article>
-                <article>
-                  <span>Solde réservé</span>
-                  <strong>
-                    {overviewError
-                      ? '—'
-                      : overview
-                        ? formatDecimalString(usdtBalance?.reserved || '0')
-                        : '…'}{' '}
-                    <small>USDT</small>
-                  </strong>
-                  <small>Fonds engagés dans une opération</small>
-                </article>
-                <article>
-                  <span>Opérations terminées</span>
-                  <strong>{overview ? number(overview.stats.completedOrders, 0) : '…'}</strong>
-                  <small>{overview ? `${number(overview.stats.pendingOrders, 0)} en cours` : 'Chargement…'}</small>
-                </article>
-                <article>
-                  <span>Volume traité</span>
-                  <strong>{overview ? money(overview.stats.completedVolumeXaf) : '…'}</strong>
-                  <small>{overview ? `${number(overview.stats.totalOrders, 0)} opération(s) au total` : 'Chargement…'}</small>
-                </article>
-                {overviewError && <Notice>{overviewError}</Notice>}
-                <p className="customer-dashboard-note">
-                  Seuls les actifs effectivement crédités sur votre compte apparaissent ici.
-                </p>
-              </section>
-              <section className="customer-market-overview">
-                <div className="customer-market-heading">
-                  <div>
-                    <span className="eyebrow plain">MARCHÉS</span>
-                    <h2>Suivre les actifs</h2>
+                  <div className="customer-wallet-breakdown">
+                    <div>
+                      <span>Réservé</span>
+                      <strong>
+                        {balancesError || balancesLoading
+                          ? '—'
+                          : formatDecimalString(bscUsdtBalance?.reserved || '0')}{' '}
+                        <small>USDT</small>
+                      </strong>
+                    </div>
+                    <div>
+                      <span>En Earn</span>
+                      <strong>
+                        {balancesError || balancesLoading
+                          ? '—'
+                          : formatDecimalString(bscUsdtBalance?.staked || '0')}{' '}
+                        <small>USDT</small>
+                      </strong>
+                    </div>
                   </div>
-                  <span
-                    className={
-                      marketSnapshot?.stale ? 'market-feed-state stale' : 'market-feed-state'
-                    }
-                  >
-                    <i />
-                    {marketSnapshot?.updatedAt
-                      ? `${marketSnapshot.stale ? 'Cours en cache · ' : ''}${marketSnapshot.source} · ${new Date(marketSnapshot.updatedAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`
-                      : marketSnapshot?.error
-                        ? 'Cours indisponibles'
-                        : 'Chargement des cours…'}
-                  </span>
-                </div>
-                {marketSnapshot?.markets?.length ? (
-                  <div className="customer-market-list">
-                    {marketSnapshot.markets.map((market) => {
-                      const change = Number(market.change24h);
-                      const price = Number(market.priceUsd);
-                      const formattedPrice = new Intl.NumberFormat('en-US', {
-                        style: 'currency',
-                        currency: 'USD',
-                        maximumFractionDigits: price >= 1 ? 2 : 6,
-                      }).format(price);
-                      return (
-                        <article className="customer-market-row" key={market.asset}>
-                          <span
-                            className={`customer-market-icon icon-${market.asset.toLowerCase()}`}
-                          >
-                            {market.asset.slice(0, 1)}
-                          </span>
-                          <div className="customer-market-name">
-                            <strong>{market.asset}</strong>
-                            <small>{market.name}</small>
-                          </div>
-                          <strong className="customer-market-price">{formattedPrice}</strong>
-                          <span
-                            className={`customer-market-change ${change < 0 ? 'negative' : 'positive'}`}
-                          >
-                            {Number.isFinite(change)
-                              ? `${change > 0 ? '+' : ''}${change.toFixed(2)}%`
-                              : '—'}
-                          </span>
-                          <div className="customer-market-actions">
-                            {market.tradeEnabled ? (
-                              <>
-                                <Link to={`/acheter?asset=${encodeURIComponent(market.asset)}`}>
-                                  Acheter
-                                </Link>
-                                <Link to={`/vendre?asset=${encodeURIComponent(market.asset)}`}>
-                                  Vendre
-                                </Link>
-                              </>
-                            ) : <span>Cours indicatif</span>}
-                          </div>
-                        </article>
-                      );
-                    })}
+                  {balancesError && <p className="customer-wallet-error">{balancesError}</p>}
+                  <div className="customer-wallet-actions">
+                    <Link to="/depot" className="primary">
+                      <span aria-hidden="true">↓</span> Déposer
+                    </Link>
+                    <Link to="/envoyer">
+                      <span aria-hidden="true">↗</span> Envoyer en P2P
+                    </Link>
                   </div>
-                ) : (
-                  <p className="customer-market-empty">
-                    {marketSnapshot?.error ||
-                      'Les cours de référence apparaîtront ici dès leur chargement.'}
-                  </p>
-                )}
-                <small className="customer-market-disclaimer">
-                  Cours indicatifs en USD. Le taux de conversion DAE en FCFA est confirmé avant
-                  chaque commande.
-                </small>
-              </section>
-              <div className="customer-status-grid">
-                <article>
-                  <span>Vérification e-mail</span>
-                  <strong className="verified-value">
-                    {customer.emailVerified ? 'Confirmée' : 'À confirmer'}
-                  </strong>
-                  <small>{customer.email}</small>
-                </article>
-                <article>
-                  <span>Vérification téléphone</span>
-                  <strong className="verified-value">
-                    {customer.phoneVerified ? 'Confirmée' : 'À confirmer'}
-                  </strong>
-                  <small>{customer.phone}</small>
-                </article>
-                <article>
-                  <span>Vérification identité</span>
-                  <strong>{kycStatusNames[customer.kycStatus] || 'À vérifier'}</strong>
-                  <small>Vérification KYC</small>
-                </article>
-              </div>
-              <div className="customer-feature-grid">
-                <article className="customer-feature-card">
-                  <span>PORTEFEUILLE</span>
-                  <h3>Vos actifs chez DAE</h3>
-                  <p>
-                    Retrouvez vos soldes et les adresses de dépôt disponibles pour votre compte.
-                  </p>
-                  <Link to="/portefeuille">Consulter mon portefeuille →</Link>
-                  <b className="feature-lock">
-                    {balancesLoading
-                      ? 'CHARGEMENT'
-                      : balancesError
-                        ? 'INDISPONIBLE'
-                        : 'CONSULTER'}
-                  </b>
-                </article>
-                <article className="customer-feature-card">
-                  <span>OPÉRATIONS</span>
-                  <h3>Dépôts et retraits</h3>
-                  <p>
-                    Déposez ou retirez des USDT lorsque ces opérations sont ouvertes sur votre compte.
-                  </p>
-                  <Link to="/depot">Voir les dépôts →</Link>
-                  <b className="feature-lock">
-                    {!features
-                      ? 'CHARGEMENT'
-                      : customer.kycStatus !== 'approved'
-                        ? 'VÉRIFICATION REQUISE'
-                        : features.custody?.deposits?.enabled ||
-                            features.custody?.withdrawals?.enabled
-                          ? 'DISPONIBLES'
-                          : 'INDISPONIBLES POUR LE MOMENT'}
-                  </b>
-                </article>
-                <article className="customer-feature-card">
-                  <span>RENDEMENT</span>
-                  <h3>Produits de staking</h3>
-                  <p>
-                    Aucune offre de staking n’est disponible pour le moment.
-                  </p>
-                  <Link to="/staking">Voir le statut →</Link>
-                  <b className="feature-lock">INDISPONIBLE</b>
-                </article>
+                </section>
+                <section className="customer-market-overview customer-home-markets">
+                  <div className="customer-market-heading">
+                    <div>
+                      <span className="eyebrow plain">MARCHÉS CRYPTO</span>
+                      <h2>Suivre les actifs</h2>
+                    </div>
+                    <span
+                      className={
+                        marketSnapshot?.stale ? 'market-feed-state stale' : 'market-feed-state'
+                      }
+                    >
+                      <i />
+                      {marketSnapshot?.updatedAt
+                        ? `${marketSnapshot.stale ? 'Cours en cache · ' : ''}${new Date(marketSnapshot.updatedAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`
+                        : marketSnapshot?.error
+                          ? 'Cours indisponibles'
+                          : 'Chargement des cours…'}
+                    </span>
+                  </div>
+                  <div className="customer-market-tabs" role="tablist" aria-label="Filtrer les marchés">
+                    {[
+                      ['watchlist', 'Favoris'],
+                      ['markets', 'Marchés'],
+                      ['gainers', 'Hausses'],
+                    ].map(([tab, label]) => (
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={dashboardMarketTab === tab}
+                        className={dashboardMarketTab === tab ? 'active' : ''}
+                        key={tab}
+                        onClick={() => setDashboardMarketTab(tab)}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  {dashboardWatchlistError && (
+                    <p className="customer-market-feedback" role="status">
+                      {dashboardWatchlistError}
+                    </p>
+                  )}
+                  {dashboardMarkets.length ? displayedDashboardMarkets.length ? (
+                    <div className="customer-market-list">
+                      {displayedDashboardMarkets.map((market) => {
+                        const change = Number(market.change24h);
+                        const price = Number(market.priceUsd);
+                        const formattedPrice = new Intl.NumberFormat('en-US', {
+                          style: 'currency',
+                          currency: 'USD',
+                          maximumFractionDigits: price >= 1 ? 2 : 6,
+                        }).format(price);
+                        const isFavorite = dashboardWatchlist.includes(market.asset);
+                        return (
+                          <article className="customer-market-row" key={market.asset}>
+                            <button
+                              className={`customer-market-favorite${isFavorite ? ' active' : ''}`}
+                              type="button"
+                              aria-label={`${isFavorite ? 'Retirer' : 'Ajouter'} ${market.asset} ${isFavorite ? 'des' : 'aux'} favoris`}
+                              aria-pressed={isFavorite}
+                              disabled={dashboardWatchlistSaving}
+                              onClick={() => toggleDashboardFavorite(market.asset)}
+                            >
+                              {isFavorite ? '★' : '☆'}
+                            </button>
+                            <span
+                              className={`customer-market-icon icon-${market.asset.toLowerCase()}`}
+                            >
+                              {market.asset.slice(0, 1)}
+                            </span>
+                            <div className="customer-market-name">
+                              <strong>{market.asset}</strong>
+                              <small>{market.name}</small>
+                            </div>
+                            <strong className="customer-market-price">{formattedPrice}</strong>
+                            <span
+                              className={`customer-market-change ${change < 0 ? 'negative' : 'positive'}`}
+                            >
+                              {Number.isFinite(change)
+                                ? `${change > 0 ? '+' : ''}${change.toFixed(2)}%`
+                                : '—'}
+                            </span>
+                            <div className="customer-market-actions">
+                              {market.tradeEnabled ? (
+                                <>
+                                  <Link to={`/acheter?asset=${encodeURIComponent(market.asset)}`}>
+                                    Acheter
+                                  </Link>
+                                  <Link to={`/vendre?asset=${encodeURIComponent(market.asset)}`}>
+                                    Vendre
+                                  </Link>
+                                </>
+                              ) : (
+                                <span>Cours indicatif</span>
+                              )}
+                            </div>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="customer-market-empty">
+                      {dashboardMarketTab === 'watchlist'
+                        ? dashboardWatchlistLoading
+                          ? 'Chargement de vos favoris…'
+                          : 'Aucun favori pour le moment. Touchez l’étoile d’un actif pour le retrouver ici.'
+                        : 'Aucun actif ne correspond à ce filtre pour le moment.'}
+                    </p>
+                  ) : (
+                    <p className="customer-market-empty">
+                      {marketSnapshot?.error || 'Les cours de référence apparaîtront ici dès leur chargement.'}
+                    </p>
+                  )}
+                  <small className="customer-market-disclaimer">
+                    Cours indicatifs en USD. Le taux de conversion DAE en FCFA est confirmé avant
+                    chaque commande.
+                  </small>
+                </section>
               </div>
               <section className="customer-order-history">
                 <div className="customer-order-history-heading">
