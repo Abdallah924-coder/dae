@@ -3106,11 +3106,6 @@ body {
   color: #85909c;
 }
 
-.customer-wallet-spacer {
-  min-height: 108px;
-  flex: 1;
-}
-
 .customer-wallet-actions {
   grid-template-columns: 1fr 1fr;
   gap: 11px;
@@ -3415,10 +3410,6 @@ body {
   .customer-wallet-hero {
     min-height: 448px;
     padding-top: 44px;
-  }
-
-  .customer-wallet-spacer {
-    min-height: 112px;
   }
 
   .customer-market-tabs {
@@ -6012,6 +6003,8 @@ body {
 
 .customer-home-bottom-nav .customer-nav.active {
   color: #17684f !important;
+  background: transparent !important;
+  box-shadow: none !important;
 }
 
 .customer-home-bottom-nav .customer-home-trade > span {
@@ -6026,6 +6019,12 @@ body {
 }
 
 @media (max-width: 700px) {
+  .customer-app .customer-sidebar > .customer-brand,
+  .customer-app .customer-sidebar > .customer-menu-label,
+  .customer-app .customer-sidebar > .customer-sidebar-bottom {
+    display: none !important;
+  }
+
   .customer-home-brand,
   .customer-topbar-brand,
   .admin-topbar-brand {
