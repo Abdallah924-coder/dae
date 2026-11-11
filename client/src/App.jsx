@@ -144,6 +144,25 @@ function formatAtomicUnits(value, decimals = 18) {
   const fraction = decimals ? digits.slice(-decimals).replace(/0+$/, '') : '';
   return fraction ? `${whole}.${fraction}` : whole;
 }
+function calculatePortfolioValueUsd(balances, markets) {
+  let total = 0;
+  for (const balance of balances) {
+    const amounts = [balance.available, balance.reserved, balance.staked].map(Number);
+    if (
+      amounts.some(
+        (amount) =>
+          !Number.isFinite(amount) || amount < 0 || amount > Number.MAX_SAFE_INTEGER,
+      )
+    ) return null;
+    const amount = amounts.reduce((sum, value) => sum + value, 0);
+    if (amount === 0) continue;
+    const price = Number(markets.find((market) => market.asset === balance.asset)?.priceUsd);
+    if (!Number.isFinite(price) || price <= 0) return null;
+    total += amount * price;
+    if (total > Number.MAX_SAFE_INTEGER) return null;
+  }
+  return Number.isFinite(total) ? total : null;
+}
 function safeExchangeRedirect(search) {
   const requested = new URLSearchParams(search).get('next') || '';
   if (!requested.startsWith('/acheter') && !requested.startsWith('/vendre')) return '/compte';
@@ -3527,6 +3546,8 @@ function CustomerPortal() {
     ['/profil', 'Mon profil', '○'],
     ['/portefeuille', 'Portefeuille', '◈'],
     ['/transactions', 'Transactions', '⇄'],
+    ['/acheter', 'Acheter', '↓'],
+    ['/vendre', 'Vendre', '↑'],
     ['/envoyer', 'Envoyer', '↗'],
     ['/depot', 'Dépôt', '↓'],
     ['/retrait', 'Retrait', '↑'],
@@ -3562,9 +3583,11 @@ function CustomerPortal() {
     (balance) => balance.asset === 'USDT' && balance.network === 'BEP20',
   );
   const dashboardMarkets = marketSnapshot?.markets || [];
+  const portfolioValueUsd = calculatePortfolioValueUsd(balances, dashboardMarkets);
   const displayedDashboardMarkets = dashboardMarkets.filter((market) => {
     if (dashboardMarketTab === 'watchlist') return dashboardWatchlist.includes(market.asset);
     if (dashboardMarketTab === 'gainers') return Number(market.change24h) > 0;
+    if (dashboardMarketTab === 'markets') return market.tradeEnabled;
     return true;
   });
   if (dashboardMarketTab === 'gainers') {
@@ -3603,7 +3626,7 @@ function CustomerPortal() {
   }
   return (
     <div className="customer-app min-h-screen bg-void text-slate-100">
-      <aside className="customer-sidebar">
+      <aside className={`customer-sidebar${path === '/compte' ? ' customer-sidebar-home' : ''}`}>
         <Link to="/" className="customer-brand transition-transform duration-300 hover:scale-[1.03]">
           <img src="/images/dae-mark.png" alt="DAE Crypto" />
         </Link>
@@ -3620,28 +3643,58 @@ function CustomerPortal() {
             </Link>
           ))}
         </nav>
-        <nav className="customer-mobile-nav" aria-label="Navigation principale">
-          {primaryMobileSections.map(([href, label, icon]) => (
-            <Link
-              key={href}
-              to={href}
-              className={path === href ? 'customer-nav active' : 'customer-nav'}
-              aria-current={path === href ? 'page' : undefined}
-            >
-              <span aria-hidden="true">{icon}</span>
-              {label}
-            </Link>
-          ))}
-          <button
-            type="button"
-            className={`customer-nav customer-more-toggle${mobileMoreOpen || moreSectionActive ? ' active' : ''}`}
-            aria-expanded={mobileMoreOpen}
-            aria-controls="customer-mobile-more-menu"
-            onClick={() => setMobileMoreOpen((open) => !open)}
-          >
-            <span aria-hidden="true">•••</span>
-            Plus
-          </button>
+        <nav
+          className={`customer-mobile-nav${path === '/compte' ? ' customer-home-bottom-nav' : ''}`}
+          aria-label="Navigation principale"
+        >
+          {path === '/compte' ? (
+            <>
+              <Link to="/compte" className="customer-nav active" aria-current="page">
+                <span aria-hidden="true">⌂</span>
+                Home
+              </Link>
+              <Link to="/#marches" className="customer-nav">
+                <span aria-hidden="true">◉</span>
+                Discovery
+              </Link>
+              <Link to="/acheter" className="customer-nav customer-home-trade">
+                <span aria-hidden="true">⇄</span>
+                Buy
+              </Link>
+              <Link to="/envoyer" className="customer-nav">
+                <span aria-hidden="true">↔</span>
+                P2P
+              </Link>
+              <Link to="/profil" className="customer-nav">
+                <span aria-hidden="true">●</span>
+                Account
+              </Link>
+            </>
+          ) : (
+            <>
+              {primaryMobileSections.map(([href, label, icon]) => (
+                <Link
+                  key={href}
+                  to={href}
+                  className={path === href ? 'customer-nav active' : 'customer-nav'}
+                  aria-current={path === href ? 'page' : undefined}
+                >
+                  <span aria-hidden="true">{icon}</span>
+                  {label}
+                </Link>
+              ))}
+              <button
+                type="button"
+                className={`customer-nav customer-more-toggle${mobileMoreOpen || moreSectionActive ? ' active' : ''}`}
+                aria-expanded={mobileMoreOpen}
+                aria-controls="customer-mobile-more-menu"
+                onClick={() => setMobileMoreOpen((open) => !open)}
+              >
+                <span aria-hidden="true">•••</span>
+                Plus
+              </button>
+            </>
+          )}
         </nav>
         {mobileMoreOpen && (
           <div className="customer-more-menu" id="customer-mobile-more-menu">
@@ -3671,23 +3724,56 @@ function CustomerPortal() {
           <button onClick={logout}>Déconnexion</button>
         </div>
       </aside>
-      <main className="customer-main">
+      <main className={`customer-main${path === '/compte' ? ' customer-main-home' : ''}`}>
         <header className="customer-topbar">
-          <div>
-            <span>DAE</span>
-            <i>/</i>
-            <strong>{titles[path] || 'Espace client'}</strong>
-          </div>
-          <div className="customer-user-chip">
-            <Link to="/profil" aria-label="Ouvrir mon profil">
-              <CustomerAvatar customer={customer} />
-              <b>
-                {customer.firstName} {customer.lastName}
-              </b>
-            </Link>
-          </div>
+          {path === '/compte' ? (
+            <div className="customer-home-topbar">
+              <button
+                type="button"
+                className="customer-home-menu-button"
+                aria-label="Ouvrir la navigation"
+                aria-expanded={mobileMoreOpen}
+                aria-controls="customer-mobile-more-menu"
+                onClick={() => setMobileMoreOpen((open) => !open)}
+              >
+                <span />
+                <span />
+                <span />
+              </button>
+              <nav className="customer-home-product-tabs" aria-label="Produits DAE">
+                <Link to="/#marches" className="active" aria-current="page">Exchange</Link>
+                <Link to="/staking">DAE Earn</Link>
+                <Link to="/portefeuille">Wallet</Link>
+              </nav>
+              <Link
+                to="/transactions"
+                className="customer-home-notifications"
+                aria-label="Activité et transactions"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" />
+                </svg>
+              </Link>
+            </div>
+          ) : (
+            <>
+              <div>
+                <span>DAE</span>
+                <i>/</i>
+                <strong>{titles[path] || 'Espace client'}</strong>
+              </div>
+              <div className="customer-user-chip">
+                <Link to="/profil" aria-label="Ouvrir mon profil">
+                  <CustomerAvatar customer={customer} />
+                  <b>
+                    {customer.firstName} {customer.lastName}
+                  </b>
+                </Link>
+              </div>
+            </>
+          )}
         </header>
-        <div className="customer-content">
+        <div className={`customer-content${path === '/compte' ? ' customer-home-content' : ''}`}>
           <div
             className={`customer-page-heading${path === '/compte' ? ' customer-home-page-heading' : ''}`}
           >
@@ -3702,39 +3788,44 @@ function CustomerPortal() {
           {path === '/compte' && (
             <>
               <div className="customer-home-shell">
-                <nav className="customer-home-product-tabs" aria-label="Produits DAE">
-                  <Link to="/#marches">Exchange</Link>
-                  <Link to="/staking">DAE Earn</Link>
-                  <Link to="/portefeuille" className="active" aria-current="page">
-                    Wallet
-                  </Link>
-                </nav>
                 <section className="customer-wallet-hero" aria-label="Solde réel du portefeuille">
-                  <div className="customer-wallet-hero-heading">
-                    <div>
-                      <span className="customer-wallet-eyebrow">DAE WALLET · USDT BEP20</span>
-                      <p>Solde disponible</p>
-                      <strong aria-live="polite">
-                        {balancesError
-                          ? '—'
-                          : balancesLoading
-                            ? '…'
-                            : formatDecimalString(bscUsdtBalance?.available || '0')}
-                        <small>USDT</small>
-                      </strong>
-                      <span className="customer-wallet-source">
-                        {balancesError
-                          ? 'Solde momentanément indisponible'
-                          : 'Solde réel enregistré dans le ledger DAE'}
-                      </span>
-                    </div>
-                    <Link to="/portefeuille" className="customer-wallet-view-all">
-                      Tous mes actifs <span aria-hidden="true">↗</span>
-                    </Link>
+                  <div className="customer-wallet-value">
+                    <span className="customer-wallet-value-label">Portfolio value</span>
+                    <strong aria-live="polite">
+                      {balancesError
+                        ? '—'
+                        : balancesLoading
+                          ? '…'
+                          : portfolioValueUsd === null
+                            ? '—'
+                            : new Intl.NumberFormat('en-US', {
+                                style: 'currency',
+                                currency: 'USD',
+                                maximumFractionDigits: 2,
+                              }).format(portfolioValueUsd)}
+                    </strong>
+                    <span className="customer-wallet-source">
+                      {balancesError
+                        ? 'Balance temporarily unavailable'
+                        : portfolioValueUsd === null && !balancesLoading
+                          ? 'Market valuation unavailable'
+                          : marketSnapshot?.stale
+                            ? 'Estimated from your DAE ledger balance and cached prices'
+                            : 'Estimated from your DAE ledger balance and current prices'}
+                    </span>
                   </div>
                   <div className="customer-wallet-breakdown">
                     <div>
-                      <span>Réservé</span>
+                      <span>Available · USDT</span>
+                      <strong>
+                        {balancesError || balancesLoading
+                          ? '—'
+                          : formatDecimalString(bscUsdtBalance?.available || '0')}{' '}
+                        <small>USDT</small>
+                      </strong>
+                    </div>
+                    <div>
+                      <span>Reserved · USDT</span>
                       <strong>
                         {balancesError || balancesLoading
                           ? '—'
@@ -3743,7 +3834,7 @@ function CustomerPortal() {
                       </strong>
                     </div>
                     <div>
-                      <span>En Earn</span>
+                      <span>Staked · USDT</span>
                       <strong>
                         {balancesError || balancesLoading
                           ? '—'
@@ -3752,21 +3843,22 @@ function CustomerPortal() {
                       </strong>
                     </div>
                   </div>
+                  <div className="customer-wallet-spacer" aria-hidden="true" />
                   {balancesError && <p className="customer-wallet-error">{balancesError}</p>}
                   <div className="customer-wallet-actions">
-                    <Link to="/depot" className="primary">
-                      <span aria-hidden="true">↓</span> Déposer
+                    <Link to="/depot">
+                      Deposit Crypto
                     </Link>
-                    <Link to="/envoyer">
-                      <span aria-hidden="true">↗</span> Envoyer en P2P
+                    <Link to="/envoyer" className="primary">
+                      P2P Trading
                     </Link>
                   </div>
                 </section>
                 <section className="customer-market-overview customer-home-markets">
                   <div className="customer-market-heading">
                     <div>
-                      <span className="eyebrow plain">MARCHÉS CRYPTO</span>
-                      <h2>Suivre les actifs</h2>
+                      <span className="eyebrow plain">MARKETS</span>
+                      <h2>Discover assets</h2>
                     </div>
                     <span
                       className={
@@ -3775,17 +3867,17 @@ function CustomerPortal() {
                     >
                       <i />
                       {marketSnapshot?.updatedAt
-                        ? `${marketSnapshot.stale ? 'Cours en cache · ' : ''}${new Date(marketSnapshot.updatedAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`
+                        ? `${marketSnapshot.stale ? 'Cached · ' : ''}${new Date(marketSnapshot.updatedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`
                         : marketSnapshot?.error
-                          ? 'Cours indisponibles'
-                          : 'Chargement des cours…'}
+                          ? 'Prices unavailable'
+                          : 'Loading prices…'}
                     </span>
                   </div>
-                  <div className="customer-market-tabs" role="tablist" aria-label="Filtrer les marchés">
+                  <div className="customer-market-tabs" role="group" aria-label="Filter markets">
                     {[
-                      ['watchlist', 'Favoris'],
-                      ['markets', 'Marchés'],
-                      ['gainers', 'Hausses'],
+                      ['watchlist', 'Watchlist'],
+                      ['markets', 'Top'],
+                      ['gainers', 'Gainers'],
                     ].map(([tab, label]) => (
                       <button
                         type="button"
@@ -3798,6 +3890,9 @@ function CustomerPortal() {
                         {label}
                       </button>
                     ))}
+                    <Link to="/#marches" className="customer-market-add" aria-label="Explore all markets">
+                      +
+                    </Link>
                   </div>
                   {dashboardWatchlistError && (
                     <p className="customer-market-feedback" role="status">
@@ -3827,37 +3922,30 @@ function CustomerPortal() {
                             >
                               {isFavorite ? '★' : '☆'}
                             </button>
-                            <span
-                              className={`customer-market-icon icon-${market.asset.toLowerCase()}`}
+                            <Link
+                              className="customer-market-link"
+                              to={market.tradeEnabled
+                                ? `/acheter?asset=${encodeURIComponent(market.asset)}`
+                                : '/#marches'}
                             >
-                              {market.asset.slice(0, 1)}
-                            </span>
-                            <div className="customer-market-name">
-                              <strong>{market.asset}</strong>
-                              <small>{market.name}</small>
-                            </div>
-                            <strong className="customer-market-price">{formattedPrice}</strong>
-                            <span
-                              className={`customer-market-change ${change < 0 ? 'negative' : 'positive'}`}
-                            >
-                              {Number.isFinite(change)
-                                ? `${change > 0 ? '+' : ''}${change.toFixed(2)}%`
-                                : '—'}
-                            </span>
-                            <div className="customer-market-actions">
-                              {market.tradeEnabled ? (
-                                <>
-                                  <Link to={`/acheter?asset=${encodeURIComponent(market.asset)}`}>
-                                    Acheter
-                                  </Link>
-                                  <Link to={`/vendre?asset=${encodeURIComponent(market.asset)}`}>
-                                    Vendre
-                                  </Link>
-                                </>
-                              ) : (
-                                <span>Cours indicatif</span>
-                              )}
-                            </div>
+                              <span className={`customer-market-icon icon-${market.asset.toLowerCase()}`}>
+                                {({ BTC: '₿', DOGE: 'Ð', ETH: '◆', USDC: '◉', USDT: '₮', BNB: '◆' })[market.asset] || market.asset.slice(0, 1)}
+                              </span>
+                              <span className="customer-market-name">
+                                <strong>{market.name}</strong>
+                                <small>{market.asset}</small>
+                              </span>
+                              <span className="customer-market-quote">
+                                <strong className="customer-market-price">{formattedPrice}</strong>
+                                <small
+                                  className={`customer-market-change ${change < 0 ? 'negative' : 'positive'}`}
+                                >
+                                  {Number.isFinite(change)
+                                    ? `${change > 0 ? '+' : ''}${change.toFixed(2)}%`
+                                    : '—'}
+                                </small>
+                              </span>
+                            </Link>
                           </article>
                         );
                       })}
@@ -3866,18 +3954,20 @@ function CustomerPortal() {
                     <p className="customer-market-empty">
                       {dashboardMarketTab === 'watchlist'
                         ? dashboardWatchlistLoading
-                          ? 'Chargement de vos favoris…'
-                          : 'Aucun favori pour le moment. Touchez l’étoile d’un actif pour le retrouver ici.'
-                        : 'Aucun actif ne correspond à ce filtre pour le moment.'}
+                          ? 'Loading your watchlist…'
+                          : 'Your watchlist is empty. Select the star next to an asset to add it.'
+                        : 'No assets match this filter right now.'}
                     </p>
                   ) : (
                     <p className="customer-market-empty">
-                      {marketSnapshot?.error || 'Les cours de référence apparaîtront ici dès leur chargement.'}
+                      {marketSnapshot?.error || 'Reference prices will appear here when available.'}
                     </p>
                   )}
                   <small className="customer-market-disclaimer">
-                    Cours indicatifs en USD. Le taux de conversion DAE en FCFA est confirmé avant
-                    chaque commande.
+                    {marketSnapshot?.updatedAt
+                      ? `Indicative USD prices · Updated ${new Date(marketSnapshot.updatedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}. `
+                      : 'Indicative USD prices. '}
+                    Your DAE conversion rate is confirmed before each order.
                   </small>
                 </section>
               </div>
