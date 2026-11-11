@@ -69,7 +69,7 @@ router.get('/positions', customerAuth, async (req, res, next) => {
       .lean();
     const rewards = await EarnReward.find({ customerId: req.customer._id })
       .sort({ rewardDateUTC: -1 })
-      .limit(500)
+      .limit(1000)
       .lean();
     const rewardsByPosition = new Map();
     for (const reward of rewards) {

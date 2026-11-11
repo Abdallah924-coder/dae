@@ -2537,28 +2537,79 @@ function CustomerFundingHistory({ type }) {
   );
 }
 
+const EARN_OPEN_POSITION_STATUSES = new Set([
+  'PENDING_ALLOCATION',
+  'ACTIVE',
+  'MATURED',
+  'WITHDRAWAL_PENDING',
+  'WITHDRAWING',
+  'SUSPENDED',
+]);
+
+const EARN_STATUS_LABELS = {
+  PENDING_ALLOCATION: 'En attente d’allocation DAE',
+  ACTIVE: 'En cours',
+  MATURED: 'Échéance atteinte',
+  WITHDRAWAL_PENDING: 'Retrait en traitement',
+  WITHDRAWING: 'Retrait en cours',
+  COMPLETED: 'Terminé',
+  CANCELLED: 'Annulé',
+  SUSPENDED: 'Suspendu',
+};
+
+function parseEarnDecimalAtomic(value) {
+  const match = /^([0-9]+)(?:\.([0-9]{0,18}))?$/.exec(String(value ?? ''));
+  if (!match) return null;
+  return BigInt(match[1]) * 10n ** 18n + BigInt((match[2] || '').padEnd(18, '0') || '0');
+}
+
+function formatEarnAtomic(value) {
+  const raw = String(value ?? '0');
+  if (!/^(0|[1-9]\d*)$/.test(raw)) return '—';
+  const digits = raw.padStart(19, '0');
+  const whole = digits.slice(0, -18);
+  const fraction = digits.slice(-18).replace(/0+$/, '');
+  return fraction ? `${whole}.${fraction}` : whole;
+}
+
+function getEarnTermProgress(position, now) {
+  if (!position.startsAt || !position.maturesAt) return null;
+  const startsAt = new Date(position.startsAt).getTime();
+  const maturesAt = new Date(position.maturesAt).getTime();
+  if (!Number.isFinite(startsAt) || !Number.isFinite(maturesAt) || maturesAt <= startsAt) {
+    return null;
+  }
+  const duration = maturesAt - startsAt;
+  const elapsed = Math.min(duration, Math.max(0, now - startsAt));
+  return {
+    percent: Math.floor((elapsed / duration) * 100),
+    daysRemaining: Math.max(0, Math.ceil((maturesAt - now) / 86_400_000)),
+  };
+}
+
 function CustomerEarnPage() {
   const [catalog, setCatalog] = useState(null);
   const [positions, setPositions] = useState([]);
+  const [positionsSource, setPositionsSource] = useState('');
+  const [positionsUpdatedAt, setPositionsUpdatedAt] = useState(null);
+  const [positionsError, setPositionsError] = useState('');
+  const [now, setNow] = useState(() => Date.now());
   const [amounts, setAmounts] = useState({});
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState('');
   const [loadingPositions, setLoadingPositions] = useState(true);
-  const formatEarnAtomic = (value) => {
-    const digits = String(value || '0').padStart(19, '0');
-    const whole = digits.slice(0, -18);
-    const fraction = digits.slice(-18).replace(/0+$/, '');
-    return fraction ? `${whole}.${fraction}` : whole;
-  };
-  const loadPositions = useCallback(async () => {
-    setLoadingPositions(true);
+  const loadPositions = useCallback(async (quiet = false) => {
+    if (!quiet) setLoadingPositions(true);
     try {
       const result = await api('/api/earn/positions');
       setPositions(result.positions || []);
+      setPositionsSource(result.source || '');
+      setPositionsUpdatedAt(new Date());
+      setPositionsError('');
     } catch (requestError) {
-      setError(requestError.message || 'Impossible de charger vos placements.');
+      setPositionsError(requestError.message || 'Impossible de charger vos placements.');
     } finally {
       setLoadingPositions(false);
     }
@@ -2569,18 +2620,59 @@ function CustomerEarnPage() {
       .then((result) => {
         if (active) {
           setCatalog(result);
-          setAmounts(Object.fromEntries((result.products || []).map((product) => [
-            product.productId,
-            product.minimumAmount,
-          ])));
+          setAmounts(
+            Object.fromEntries(
+              (result.products || []).map((product) => [product.productId, product.minimumAmount]),
+            ),
+          );
         }
       })
       .catch((requestError) => {
         if (active) setError(requestError.message || 'Le catalogue DAE Earn est indisponible.');
       });
     loadPositions();
-    return () => { active = false; };
+    const refresh = () => {
+      if (document.visibilityState !== 'visible') return;
+      setNow(Date.now());
+      loadPositions(true);
+    };
+    const refreshTimer = window.setInterval(refresh, 30_000);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      active = false;
+      window.clearInterval(refreshTimer);
+      document.removeEventListener('visibilitychange', refresh);
+    };
   }, [loadPositions]);
+  const openPositions = positions.filter((position) =>
+    EARN_OPEN_POSITION_STATUSES.has(position.status),
+  );
+  const capitalAmounts = openPositions.map((position) => parseEarnDecimalAtomic(position.amount));
+  const totalCapitalAtomic = capitalAmounts.some((amount) => amount === null)
+    ? null
+    : capitalAmounts.reduce((sum, amount) => sum + amount, 0n);
+  const paidAmounts = positions.map((position) => String(position.totalRewardsPaidAtomic || '0'));
+  const totalPaidAtomic = paidAmounts.some((amount) => !/^(0|[1-9]\d*)$/.test(amount))
+    ? null
+    : paidAmounts.reduce((sum, amount) => sum + BigInt(amount), 0n);
+  const dailyPaid = new Map();
+  for (const position of positions) {
+    for (const reward of position.rewards || []) {
+      const date = new Date(reward.date);
+      const paid = parseEarnDecimalAtomic(reward.paid);
+      if (!Number.isFinite(date.getTime()) || paid === null) continue;
+      const key = date.toISOString().slice(0, 10);
+      dailyPaid.set(key, (dailyPaid.get(key) || 0n) + paid);
+    }
+  }
+  const dailyEvolution = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(now);
+    date.setUTCHours(0, 0, 0, 0);
+    date.setUTCDate(date.getUTCDate() - (6 - index));
+    const key = date.toISOString().slice(0, 10);
+    return { date, key, paid: dailyPaid.get(key) || 0n };
+  });
+  const maxDailyPaid = dailyEvolution.reduce((max, day) => (day.paid > max ? day.paid : max), 0n);
   const subscribe = async (product) => {
     setBusy(product.productId);
     setError('');
@@ -2595,7 +2687,9 @@ function CustomerEarnPage() {
           acceptedTermsVersion: 'DAE_EARN_V1',
         }),
       });
-      setNotice(`Placement créé et verrouillé au ledger. Référence ${result.position.ledgerReference}. En attente d’allocation DAE.`);
+      setNotice(
+        `Placement créé et verrouillé au ledger. Référence ${result.position.ledgerReference}. En attente d’allocation DAE.`,
+      );
       await loadPositions();
     } catch (requestError) {
       setError(requestError.message || 'La souscription a échoué.');
@@ -2604,23 +2698,34 @@ function CustomerEarnPage() {
     }
   };
   const requestWithdrawal = async (position) => {
-    const penalty = ['ACTIVE', 'MATURED'].includes(position.status) && position.maturesAt && new Date(position.maturesAt) > new Date()
-      ? BigInt(position.totalRewardsPaidAtomic || '0') * BigInt(position.creditedRewardsPenaltyBps || 0) / 10_000n
-      : 0n;
+    const penalty =
+      ['ACTIVE', 'MATURED'].includes(position.status) &&
+      position.maturesAt &&
+      new Date(position.maturesAt) > new Date()
+        ? (BigInt(position.totalRewardsPaidAtomic || '0') *
+            BigInt(position.creditedRewardsPenaltyBps || 0)) /
+          10_000n
+        : 0n;
     const penaltyText = formatEarnAtomic(penalty.toString());
-    if (!window.confirm(
-      penalty > 0n
-        ? `Confirmer le retrait anticipé ? Une pénalité de ${penaltyText} USDT sur les récompenses déjà créditées sera débitée du solde disponible, jamais du capital. Les récompenses futures seront perdues.`
-        : 'Demander le retrait de ce placement ? DAE devra d’abord récupérer les fonds et vérifier la liquidité. Aucun capital ne sera crédité avant validation.',
-    )) return;
+    if (
+      !window.confirm(
+        penalty > 0n
+          ? `Confirmer le retrait anticipé ? Une pénalité de ${penaltyText} USDT sur les récompenses déjà créditées sera débitée du solde disponible, jamais du capital. Les récompenses futures seront perdues.`
+          : 'Demander le retrait de ce placement ? DAE devra d’abord récupérer les fonds et vérifier la liquidité. Aucun capital ne sera crédité avant validation.',
+      )
+    )
+      return;
     setBusy(position.id);
     setError('');
     setNotice('');
     try {
-      const result = await api(`/api/earn/positions/${encodeURIComponent(position.id)}/withdrawal`, {
-        method: 'POST',
-        body: JSON.stringify({ acceptEarlyPenalty: true }),
-      });
+      const result = await api(
+        `/api/earn/positions/${encodeURIComponent(position.id)}/withdrawal`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ acceptEarlyPenalty: true }),
+        },
+      );
       setNotice(`${result.message} Pénalité confirmée : ${result.penalty} USDT.`);
       await loadPositions();
     } catch (requestError) {
@@ -2644,21 +2749,151 @@ function CustomerEarnPage() {
         </div>
       </section>
       {error && <Notice>{error}</Notice>}
-      {notice && <p className="customer-earn-status" role="status">{notice}</p>}
-      {!catalog && !error && <p className="customer-history-pagination">Chargement du catalogue…</p>}
+      {notice && (
+        <p className="customer-earn-status" role="status">
+          {notice}
+        </p>
+      )}
+      <section className="earn-live-overview" aria-label="Suivi de votre programme DAE Earn">
+        <div className="earn-live-heading">
+          <div>
+            <span className="eyebrow plain">VOTRE PROGRAMME</span>
+            <h2>Suivi des placements</h2>
+            <p>
+              Les montants versés correspondent aux écritures confirmées. La progression du terme
+              indique le temps écoulé, pas un rendement garanti.
+            </p>
+            <a className="button button-outline compact" href="#earn-positions">
+              Voir le détail de mes placements
+            </a>
+          </div>
+          <div className="earn-live-refresh">
+            <i />
+            <span>
+              Actualisation automatique ·{' '}
+              {positionsUpdatedAt ? (
+                <time dateTime={positionsUpdatedAt.toISOString()}>
+                  mis à jour à {positionsUpdatedAt.toLocaleTimeString('fr-FR')}
+                </time>
+              ) : (
+                'chargement des données'
+              )}
+            </span>
+          </div>
+        </div>
+        <div className="earn-live-stats">
+          <article>
+            <span>Capital en placement</span>
+            <strong>
+              {loadingPositions || positionsError || totalCapitalAtomic === null
+                ? '—'
+                : formatEarnAtomic(totalCapitalAtomic.toString())}
+              <small> USDT</small>
+            </strong>
+            <small>Positions non terminées</small>
+          </article>
+          <article>
+            <span>Récompenses versées</span>
+            <strong>
+              {loadingPositions || positionsError || totalPaidAtomic === null
+                ? '—'
+                : formatEarnAtomic(totalPaidAtomic.toString())}
+              <small> USDT</small>
+            </strong>
+            <small>Crédits réels au ledger</small>
+          </article>
+          <article>
+            <span>Placements suivis</span>
+            <strong>{openPositions.length}</strong>
+            <small>En cours ou en traitement</small>
+          </article>
+          <article>
+            <span>Source des données</span>
+            <strong>{positionsSource === 'internal_ledger' ? 'Ledger DAE' : '—'}</strong>
+            <small>Actualisé toutes les 30 secondes</small>
+          </article>
+        </div>
+        <div className="earn-live-evolution">
+          <div className="earn-evolution-heading">
+            <div>
+              <h3>Évolution des versements</h3>
+              <p>Récompenses effectivement payées sur les 7 derniers jours (UTC).</p>
+            </div>
+            <span>USDT · réel</span>
+          </div>
+          <div
+            className="earn-evolution-chart"
+            role="list"
+            aria-label="Graphique des récompenses quotidiennes réellement versées sur sept jours"
+          >
+            {dailyEvolution.map((day) => {
+              const height =
+                maxDailyPaid > 0n ? Number((day.paid * 10_000n) / maxDailyPaid) / 100 : 0;
+              return (
+                <div
+                  className="earn-evolution-day"
+                  key={day.key}
+                  role="listitem"
+                  aria-label={`${day.date.toLocaleDateString('fr-FR', { timeZone: 'UTC' })} : ${formatEarnAtomic(day.paid.toString())} USDT versés`}
+                >
+                  <strong>{formatEarnAtomic(day.paid.toString())}</strong>
+                  <div className="earn-evolution-track">
+                    <i style={{ height: `${height}%` }} />
+                  </div>
+                  <small>
+                    {day.date.toLocaleDateString('fr-FR', { weekday: 'short', timeZone: 'UTC' })}
+                  </small>
+                </div>
+              );
+            })}
+          </div>
+          {!loadingPositions && !positionsError && maxDailyPaid === 0n && (
+            <p className="earn-evolution-empty">
+              Aucun versement n’a été enregistré sur cette période. Les APY affichés ne sont pas
+              ajoutés aux gains tant qu’une récompense n’est pas effectivement financée et créditée.
+            </p>
+          )}
+        </div>
+      </section>
+      {!catalog && !error && (
+        <p className="customer-history-pagination">Chargement du catalogue…</p>
+      )}
       {catalog && (
         <section className="customer-earn-products" aria-label="Produits DAE Earn">
           {catalog.products.map((product) => (
             <article className="customer-earn-product" key={product.productId}>
-              <span className="eyebrow plain">{product.flexible ? 'FLEXIBLE' : `${product.durationDays} JOURS`}</span>
+              <span className="eyebrow plain">
+                {product.flexible ? 'FLEXIBLE' : `${product.durationDays} JOURS`}
+              </span>
               <h3>{product.name}</h3>
-              <strong className="customer-earn-apy">{(product.apyBps / 100).toFixed(2)}<small>%</small></strong>
+              <strong className="customer-earn-apy">
+                {(product.apyBps / 100).toFixed(2)}
+                <small>%</small>
+              </strong>
               <small>APY indicatif · non garanti</small>
               <dl>
-                <div><dt>Dépôt minimum</dt><dd>{formatDecimalString(product.minimumAmount)} USDT</dd></div>
-                <div><dt>Durée</dt><dd>{product.flexible ? 'Sans engagement fixe' : `${product.durationDays} jours`}</dd></div>
-                <div><dt>Retrait</dt><dd>{product.flexible ? 'Selon les liquidités disponibles' : 'Capital bloqué à échéance'}</dd></div>
-                <div><dt>Récompenses</dt><dd>Calculées quotidiennement si financées</dd></div>
+                <div>
+                  <dt>Dépôt minimum</dt>
+                  <dd>{formatDecimalString(product.minimumAmount)} USDT</dd>
+                </div>
+                <div>
+                  <dt>Durée</dt>
+                  <dd>
+                    {product.flexible ? 'Sans engagement fixe' : `${product.durationDays} jours`}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Retrait</dt>
+                  <dd>
+                    {product.flexible
+                      ? 'Selon les liquidités disponibles'
+                      : 'Capital bloqué à échéance'}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Récompenses</dt>
+                  <dd>Calculées quotidiennement si financées</dd>
+                </div>
               </dl>
               <label className="field-label">
                 Montant à verrouiller (USDT)
@@ -2667,17 +2902,25 @@ function CustomerEarnPage() {
                   min={product.minimumAmount}
                   step="0.000000000000000001"
                   value={amounts[product.productId] || ''}
-                  onChange={(event) => setAmounts((current) => ({
-                    ...current,
-                    [product.productId]: event.target.value,
-                  }))}
+                  onChange={(event) =>
+                    setAmounts((current) => ({
+                      ...current,
+                      [product.productId]: event.target.value,
+                    }))
+                  }
                 />
               </label>
               <button
                 className="button button-primary"
-                disabled={!catalog.subscriptionsEnabled || !acceptedTerms || busy === product.productId}
+                disabled={
+                  !catalog.subscriptionsEnabled || !acceptedTerms || busy === product.productId
+                }
                 onClick={() => subscribe(product)}
-                title={!catalog.subscriptionsEnabled ? 'Les souscriptions sont fermées par l’administration.' : ''}
+                title={
+                  !catalog.subscriptionsEnabled
+                    ? 'Les souscriptions sont fermées par l’administration.'
+                    : ''
+                }
               >
                 {busy === product.productId ? 'Verrouillage…' : 'Souscrire et verrouiller'}
               </button>
@@ -2692,44 +2935,154 @@ function CustomerEarnPage() {
             checked={acceptedTerms}
             onChange={(event) => setAcceptedTerms(event.target.checked)}
           />
-          J’accepte que le capital soit verrouillé dans mon compte jusqu’à l’échéance ou au traitement
-          d’un retrait; les APY sont indicatifs et les récompenses ne sont versées que si DAE a reçu
-          des revenus réels. Un retrait anticipé peut annuler les récompenses futures et appliquer la
-          pénalité affichée sur les récompenses déjà créditées.
+          J’accepte que le capital soit verrouillé dans mon compte jusqu’à l’échéance ou au
+          traitement d’un retrait; les APY sont indicatifs et les récompenses ne sont versées que si
+          DAE a reçu des revenus réels. Un retrait anticipé peut annuler les récompenses futures et
+          appliquer la pénalité affichée sur les récompenses déjà créditées.
         </label>
       </section>
-      <section className="customer-module-card customer-earn-empty">
+      <section className="customer-module-card customer-earn-empty" id="earn-positions">
         <span className="eyebrow plain">MES PLACEMENTS</span>
-        <h3>Mes placements</h3>
+        <div className="earn-position-section-heading">
+          <div>
+            <h3>Mes placements</h3>
+            <p>Détail du capital, de l’échéance et de l’historique des récompenses.</p>
+          </div>
+          <span>
+            {openPositions.length} actif{openPositions.length > 1 ? 's' : ''}
+          </span>
+        </div>
         {loadingPositions && <p>Chargement des placements…</p>}
-        {!loadingPositions && positions.length === 0 && <p>Aucun placement DAE Earn.</p>}
+        {positionsError && (
+          <p className="earn-position-pending" role="alert">
+            {positionsError} Nouvelle tentative automatique dans 30 secondes.
+          </p>
+        )}
+        {!loadingPositions && !positionsError && positions.length === 0 && (
+          <p>Aucun placement DAE Earn.</p>
+        )}
         <div className="earn-customer-positions">
-          {positions.map((position) => (
-            <article key={position.id}>
-              <strong>{position.productId} · {formatEarnAtomic(position.amount)} USDT</strong>
-              <small>
-                Statut : {position.status} · APY indicatif {(position.rewardRateBps / 100).toFixed(2)} % ·{' '}
-                Récompenses versées {formatEarnAtomic(position.totalRewardsPaid)} USDT
-              </small>
-              {position.startsAt && <small>Début {new Date(position.startsAt).toLocaleDateString('fr-FR')}</small>}
-              {position.maturesAt && <small>Échéance {new Date(position.maturesAt).toLocaleDateString('fr-FR')}</small>}
-              {position.status === 'WITHDRAWAL_PENDING' && <small>Retrait en traitement par DAE; crédit non effectué avant récupération des fonds.</small>}
-              {['PENDING_ALLOCATION', 'ACTIVE', 'MATURED'].includes(position.status) && (
-                <button
-                  className="button button-outline compact"
-                  disabled={busy === position.id}
-                  onClick={() => requestWithdrawal(position)}
-                >
-                  Demander un retrait
-                </button>
-              )}
-              {position.rewards?.map((reward) => (
-                <small key={reward.date}>
-                  {reward.date} · calcul {reward.requested} USDT · versé {reward.paid} USDT · {reward.status}
-                </small>
-              ))}
-            </article>
-          ))}
+          {positions.map((position) => {
+            const progress = getEarnTermProgress(position, now);
+            const rewards = [...(position.rewards || [])]
+              .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+              .slice(0, 7);
+            return (
+              <article className="earn-position-card" key={position.id}>
+                <div className="earn-position-heading">
+                  <div>
+                    <span className="eyebrow plain">{position.productId}</span>
+                    <h4>
+                      {formatDecimalString(position.amount)} <small>USDT placés</small>
+                    </h4>
+                  </div>
+                  <span className={`earn-position-status status-${position.status.toLowerCase()}`}>
+                    {EARN_STATUS_LABELS[position.status] || position.status}
+                  </span>
+                </div>
+                <div className="earn-position-metrics">
+                  <div>
+                    <span>APY indicatif</span>
+                    <strong>{(position.rewardRateBps / 100).toFixed(2)} %</strong>
+                  </div>
+                  <div>
+                    <span>Récompenses versées</span>
+                    <strong>{formatEarnAtomic(position.totalRewardsPaid)} USDT</strong>
+                  </div>
+                  <div>
+                    <span>Durée du programme</span>
+                    <strong>{position.lockDays ? `${position.lockDays} jours` : 'Flexible'}</strong>
+                  </div>
+                  <div>
+                    <span>Échéance</span>
+                    <strong>
+                      {position.maturesAt
+                        ? new Date(position.maturesAt).toLocaleDateString('fr-FR')
+                        : 'Sans échéance fixe'}
+                    </strong>
+                  </div>
+                </div>
+                {progress ? (
+                  <div className="earn-term-progress">
+                    <div>
+                      <span>Durée écoulée</span>
+                      <strong>{progress.percent} %</strong>
+                      <small>
+                        {progress.daysRemaining > 0
+                          ? `${progress.daysRemaining} jour${progress.daysRemaining > 1 ? 's' : ''} restant${progress.daysRemaining > 1 ? 's' : ''}`
+                          : 'Échéance atteinte'}
+                      </small>
+                    </div>
+                    <div
+                      className="earn-term-track"
+                      role="progressbar"
+                      aria-label={`Durée écoulée du placement ${position.productId}`}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={progress.percent}
+                    >
+                      <i style={{ width: `${progress.percent}%` }} />
+                    </div>
+                  </div>
+                ) : position.status === 'PENDING_ALLOCATION' ? (
+                  <p className="earn-position-pending">
+                    Le placement est verrouillé au ledger. La durée commencera après activation par
+                    DAE.
+                  </p>
+                ) : null}
+                <div className="earn-position-dates">
+                  {position.startsAt && (
+                    <span>Début : {new Date(position.startsAt).toLocaleDateString('fr-FR')}</span>
+                  )}
+                  {position.status === 'WITHDRAWAL_PENDING' && (
+                    <span>
+                      Retrait en traitement par DAE; aucun crédit ne sera fait avant récupération
+                      des fonds.
+                    </span>
+                  )}
+                </div>
+                {['PENDING_ALLOCATION', 'ACTIVE', 'MATURED'].includes(position.status) && (
+                  <button
+                    className="button button-outline compact"
+                    disabled={busy === position.id}
+                    onClick={() => requestWithdrawal(position)}
+                  >
+                    {busy === position.id ? 'Envoi…' : 'Demander un retrait'}
+                  </button>
+                )}
+                <div className="earn-position-rewards">
+                  <h5>Historique des récompenses</h5>
+                  {rewards.length ? (
+                    <div className="earn-reward-history">
+                      {rewards.map((reward, index) => (
+                        <div key={`${reward.date}-${index}`}>
+                          <span>
+                            {new Date(reward.date).toLocaleDateString('fr-FR', { timeZone: 'UTC' })}
+                            <small>
+                              {reward.status === 'paid'
+                                ? 'Versée'
+                                : reward.status === 'scaled'
+                                  ? 'Financée partiellement'
+                                  : 'En attente de financement'}
+                            </small>
+                          </span>
+                          <strong>{formatDecimalString(reward.paid)} USDT</strong>
+                          {reward.status !== 'paid' && (
+                            <small className="earn-reward-note">
+                              Calcul indicatif : {formatDecimalString(reward.requested)} USDT · non
+                              versé
+                            </small>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p>Aucune récompense quotidienne enregistrée pour ce placement.</p>
+                  )}
+                </div>
+              </article>
+            );
+          })}
         </div>
       </section>
     </>
