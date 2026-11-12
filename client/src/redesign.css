@@ -5493,6 +5493,115 @@ body {
   color: #17684f !important;
 }
 
+.app-shell:not(.landing-shell) .nav-primary {
+  display: flex;
+  align-items: center;
+  gap: clamp(8px, 1vw, 15px);
+}
+
+.app-shell:not(.landing-shell) .nav-primary .nav-item {
+  white-space: nowrap;
+}
+
+.app-shell:not(.landing-shell) .nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.app-shell:not(.landing-shell) .account-access-aside {
+  border-color: #24483a !important;
+  color: #f2f6ed !important;
+  background:
+    radial-gradient(ellipse at 90% 12%, rgba(52, 112, 78, 0.5), transparent 43%),
+    linear-gradient(155deg, #17392e, #10271f) !important;
+}
+
+.app-shell:not(.landing-shell) .account-access-aside h2 {
+  color: #f2f6ed !important;
+}
+
+.app-shell:not(.landing-shell) .account-access-aside .eyebrow,
+.app-shell:not(.landing-shell) .account-security-points p > b {
+  color: #c6e99a !important;
+}
+
+.app-shell:not(.landing-shell) .account-security-points strong {
+  color: #f2f6ed !important;
+}
+
+.app-shell:not(.landing-shell) .account-access-aside > p,
+.app-shell:not(.landing-shell) .account-security-points small {
+  color: #c1d0c8 !important;
+}
+
+.app-shell:not(.landing-shell) .contact-layout > div {
+  background: #f8faf8 !important;
+}
+
+.app-shell:not(.landing-shell) .contact-method {
+  border-color: #e2eae4 !important;
+  background: transparent !important;
+}
+
+.app-shell:not(.landing-shell) .contact-method > span {
+  color: #17684f !important;
+  background: #eaf4ed !important;
+}
+
+.app-shell:not(.landing-shell) .contact-method div,
+.app-shell:not(.landing-shell) .contact-method strong {
+  color: #183129 !important;
+}
+
+.app-shell:not(.landing-shell) .contact-method small,
+.app-shell:not(.landing-shell) .contact-method > b,
+.app-shell:not(.landing-shell) .support-note {
+  color: #697a73 !important;
+}
+
+.app-shell:not(.landing-shell) .support-note {
+  border: 1px solid #e3ebe5;
+  background: #fff;
+}
+
+@media (max-width: 900px) {
+  .app-shell:not(.landing-shell) .nav-links.open {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .app-shell:not(.landing-shell) .nav-primary,
+  .app-shell:not(.landing-shell) .nav-actions {
+    display: grid;
+    gap: 4px;
+  }
+
+  .app-shell:not(.landing-shell) .nav-primary .nav-item {
+    display: block;
+    min-height: 42px;
+    padding: 11px 12px;
+    border-radius: 9px;
+  }
+
+  .app-shell:not(.landing-shell) .nav-actions {
+    margin-top: 4px;
+    padding-top: 8px;
+    border-top: 1px solid #e8eee9;
+  }
+
+  .app-shell:not(.landing-shell) .nav-actions .button {
+    width: 100%;
+  }
+}
+
+@media (max-width: 700px) {
+  .app-shell:not(.landing-shell) .contact-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+  }
+}
+
 .customer-app,
 .admin-app {
   color-scheme: light;

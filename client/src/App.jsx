@@ -2123,20 +2123,20 @@ function AccountAccess({ initialMode = 'login' }) {
             <h1>
               {stage === 2
                 ? registerMode
-                  ? 'Confirme ton adresse e-mail.'
+                  ? 'Confirmez votre adresse e-mail.'
                   : 'Confirme cette connexion.'
                 : registerMode
-                  ? 'Commence avec DAE.'
-                  : 'Ravi de te revoir.'}
+                  ? 'Commencez avec DAE.'
+                  : 'Ravi de vous revoir.'}
             </h1>
             <p>
               {stage === 2
                 ? registerMode
-                  ? 'Entre le code à six chiffres reçu par e-mail pour activer ton compte.'
-                  : 'Entre le code à six chiffres reçu par e-mail.'
+                  ? 'Entrez le code à six chiffres reçu par e-mail pour activer votre compte.'
+                  : 'Entrez le code à six chiffres reçu par e-mail.'
                 : registerMode
-                  ? 'Crée ton accès personnel. Tes coordonnées seront vérifiées avant toute activité du compte.'
-                  : 'Connecte-toi avec ton e-mail, puis confirme avec le code de sécurité reçu par e-mail.'}
+                  ? 'Créez votre accès personnel. Vos coordonnées seront vérifiées avant toute activité du compte.'
+                  : 'Connectez-vous avec votre e-mail, puis confirmez avec le code de sécurité reçu par e-mail.'}
             </p>
           </div>
           {registerMode && !registrationReady && stage === 1 && (
@@ -2326,7 +2326,7 @@ function AccountAccess({ initialMode = 'login' }) {
             )}
           </form>
           <div className="account-access-switch">
-            {registerMode ? 'Tu as déjà un compte ?' : 'Première visite ?'}{' '}
+            {registerMode ? 'Vous avez déjà un compte ?' : 'Première visite ?'}{' '}
             <Link to={registerMode ? '/connexion' : '/inscription'}>
               {registerMode ? 'Se connecter' : 'Créer un compte'}
             </Link>
@@ -2431,8 +2431,8 @@ function PasswordRecovery() {
               {stage === 3
                 ? 'Accès restauré.'
                 : stage === 1
-                  ? 'Réinitialise ton mot de passe.'
-                  : 'Confirme ton identité.'}
+                  ? 'Réinitialisez votre mot de passe.'
+                  : 'Confirmez votre identité.'}
             </h1>
             <p>
               {stage === 1
